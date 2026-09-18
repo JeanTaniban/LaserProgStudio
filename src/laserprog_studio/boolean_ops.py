@@ -272,12 +272,18 @@ def _prepared_boolean_arrays(mesh: Any, *, label: str):
     # duplicates are welded before constructing the Manifold.  The only known
     # case where welding is unsafe is the image-mask relief diagonal-contact
     # geometry, which marks itself explicitly with _lps_skip_boolean_merge.
+    # Persisted projects cannot retain arbitrary runtime attributes, so the
+    # same marker is also stored in WorkMesh.metadata by the mask-relief tool.
     #
     # This matters for chained workflows such as:
     #   (mesh - PlanTracer volume) union (another PlanTracer volume)
     # The intermediate result is closed, but skipping merge can let manifold3d
     # interpret the next union as an empty/invalid result on exact seams.
-    skip_merge = bool(getattr(mesh, "_lps_skip_boolean_merge", False))
+    metadata = dict(getattr(mesh, "metadata", {}) or {})
+    skip_merge = bool(
+        getattr(mesh, "_lps_skip_boolean_merge", False)
+        or metadata.get("boolean_skip_merge", False)
+    )
     return vertices, triangles, skip_merge
 
 

@@ -42,6 +42,7 @@ DEFAULT_SETTINGS = {
     "joint_count": 1,
     "joint_edge_margin_mm": 2.0,
     "single_depth_probe": True,
+    "subtract_all": False,
     "debug_log": False,
     "method": "tab_slot_simple",  # future: finger, dovetail, etc.
 }

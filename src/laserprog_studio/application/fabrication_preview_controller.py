@@ -97,7 +97,7 @@ class FabricationPreviewController(OwnerDelegatingController):
             if len(self.selected_indices) != 2:
                 self.ui_log("[JOINT] Select exactly two parts: A then B")
                 return
-            from laserprog_studio.fabrication.joint_builder import apply_tab_slot_simple, DEBUG_LOG_VERSION
+            from laserprog_studio.fabrication.joint_builder import apply_tab_slot_to_scene, DEBUG_LOG_VERSION
             a, b = self.selected_indices
             base_meshes = [copy.deepcopy(m) for m in self.current_meshes()]
             if not (0 <= a < len(base_meshes) and 0 <= b < len(base_meshes)):
@@ -108,6 +108,7 @@ class FabricationPreviewController(OwnerDelegatingController):
             joint_count = int(self.joint_count.value())
             joint_edge_margin = float(self.joint_edge_margin.value())
             single_probe = bool(self.joint_single_probe.isChecked())
+            subtract_all = bool(self.joint_subtract_all.isChecked())
 
             try:
                 from laserprog_studio.services.debug_mode import should_record_diagnostics
@@ -130,20 +131,21 @@ class FabricationPreviewController(OwnerDelegatingController):
                     with log_path.open("a", encoding="utf-8") as f:
                         f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 debug_cb = _dbg
-                debug_cb("start", {"touch_tol": touch_tol, "clearance": clearance, "joint_size": joint_size, "joint_count": joint_count, "joint_edge_margin": joint_edge_margin, "single_depth_probe": single_probe, "debug_log_version": int(DEBUG_LOG_VERSION), "preview_input": bool(self.has_preview())})
+                debug_cb("start", {"touch_tol": touch_tol, "clearance": clearance, "joint_size": joint_size, "joint_count": joint_count, "joint_edge_margin": joint_edge_margin, "single_depth_probe": single_probe, "subtract_all": subtract_all, "debug_log_version": int(DEBUG_LOG_VERSION), "preview_input": bool(self.has_preview())})
 
-            mesh_a2, mesh_b2 = apply_tab_slot_simple(
-                base_meshes[a], base_meshes[b],
+            base_meshes, changed_indices = apply_tab_slot_to_scene(
+                base_meshes,
+                index_a=a,
+                index_b=b,
                 touch_tolerance=touch_tol,
                 clearance=clearance,
                 joint_size=joint_size,
                 joint_count=joint_count,
                 joint_edge_margin=joint_edge_margin,
                 single_depth_probe=single_probe,
+                subtract_all=subtract_all,
                 debug=debug_cb,
             )
-            base_meshes[a] = mesh_a2
-            base_meshes[b] = mesh_b2
             was_already_previewing = bool(self.has_preview())
             self.set_preview_meshes(base_meshes, f"Joint added A={a} B={b}")
 
@@ -156,7 +158,8 @@ class FabricationPreviewController(OwnerDelegatingController):
             if debug_cb:
                 debug_cb("done", {"status": "ok"})
             pending = "batch preview" if was_already_previewing else "preview"
-            self.ui_log(f"[JOINT] Added to {pending}: A={a} B={b} count={joint_count} edge_margin={joint_edge_margin:.2f}mm. Select another pair or Apply when finished.")
+            scope = "all intersecting parts" if subtract_all else "B only"
+            self.ui_log(f"[JOINT] Added to {pending}: A={a} B={b} changed={list(changed_indices)} count={joint_count} edge_margin={joint_edge_margin:.2f}mm female cut={scope}. Select another pair or Apply when finished.")
         except Exception as exc:
             if debug_cb:
                 try:

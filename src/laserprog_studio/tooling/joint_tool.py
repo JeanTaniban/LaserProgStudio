@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from laserprog_studio.fabrication.joint_builder import apply_tab_slot_simple
+from laserprog_studio.fabrication.joint_builder import apply_tab_slot_to_scene
 from laserprog_studio.tool_api.application import OperationResult
 from laserprog_studio.tool_api.inspector import BoolField, ButtonRow, FloatField, HelpText, InspectorActionEvent, IntField, Panel, ReadonlyField, Section
 from laserprog_studio.tool_api.core import CreatorStudioToolAdapter, CreatorTool
@@ -98,6 +98,13 @@ class JointCreatorTool(CreatorTool):
                         IntField("joint_count", "Joint count", default=1, min_value=1, max_value=100, step=1, on_change=setting_change),
                         FloatField("joint_edge_margin_mm", "Edge margin", default=2.0, min_value=0.0, max_value=1000.0, step=0.5, unit="mm", on_change=setting_change),
                         BoolField("single_depth_probe", "Fast depth", default=True, on_change=setting_change),
+                        BoolField(
+                            "subtract_all",
+                            "Subtract all",
+                            default=False,
+                            tooltip="Off: cut only B (current behavior). On: cut every other scene part crossed by the female slot; A keeps its male tab.",
+                            on_change=setting_change,
+                        ),
                     ),
                 ),
                 Section(
@@ -126,25 +133,27 @@ class JointCreatorTool(CreatorTool):
         joint_count = max(1, int(params.get("joint_count", 1)))
         edge_margin = max(0.0, float(params.get("joint_edge_margin_mm", 2.0)))
         single_depth_probe = bool(params.get("single_depth_probe", True))
+        subtract_all = bool(params.get("subtract_all", False))
 
-        mesh_a, mesh_b = apply_tab_slot_simple(
-            base_meshes[a],
-            base_meshes[b],
+        base_meshes, changed_indices = apply_tab_slot_to_scene(
+            base_meshes,
+            index_a=a,
+            index_b=b,
             touch_tolerance=touch_tolerance,
             clearance=clearance,
             joint_size=joint_size,
             joint_count=joint_count,
             joint_edge_margin=edge_margin,
             single_depth_probe=single_depth_probe,
+            subtract_all=subtract_all,
             debug=None,
         )
-        base_meshes[a] = mesh_a
-        base_meshes[b] = mesh_b
-        report = f"Joint preview ready.\nA/B: {a:02d} / {b:02d}\nCount: {joint_count}\nSize: {joint_size:g} mm\nClearance: {clearance:g} mm"
+        scope = "all intersecting parts" if subtract_all else "B only"
+        report = f"Joint preview ready.\nA/B: {a:02d} / {b:02d}\nCount: {joint_count}\nSize: {joint_size:g} mm\nClearance: {clearance:g} mm\nFemale cut: {scope}"
         return OperationResult.success(
             tuple(base_meshes),
             report=report,
-            metadata={"changed_indices": (a, b), "selected_indices": (a, b), "joint_count": joint_count, "joint_size_mm": joint_size},
+            metadata={"changed_indices": changed_indices, "selected_indices": (a, b), "joint_count": joint_count, "joint_size_mm": joint_size, "subtract_all": subtract_all},
         )
 
     def _preview_action(self, ctx: Any, event: InspectorActionEvent | None = None) -> bool:

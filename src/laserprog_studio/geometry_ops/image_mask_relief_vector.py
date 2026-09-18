@@ -150,6 +150,53 @@ def _smooth_binary_geometry(geom, *, pixel_size_mm: float, smooth: float):
         return geom
 
 
+def _separate_polygon_point_contacts(geom, *, pixel_size_mm: float):
+    """Remove zero-area pinches that cannot form a manifold extrusion.
+
+    A raster can contain strokes that only meet at one pixel corner.  Shapely
+    may represent a smoothed version as one polygon whose exterior and an
+    interior ring touch at that point.  Extruding that representation produces
+    four side faces on the same vertical edge.  The shape looks correct, but it
+    is non-manifold and every boolean rightfully rejects it.  Apply an
+    imperceptibly small close/open only for that pathological topology.
+    """
+
+    from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
+
+    def polygons_of(value):
+        if isinstance(value, Polygon):
+            return [value] if not value.is_empty else []
+        if isinstance(value, MultiPolygon):
+            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
+        if isinstance(value, GeometryCollection):
+            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
+        return [poly for poly in getattr(value, "geoms", []) if isinstance(poly, Polygon) and not poly.is_empty]
+
+    def has_ring_point_contact(poly) -> bool:
+        seen: set[tuple[int, int]] = set()
+        for ring in (poly.exterior, *poly.interiors):
+            coords = list(ring.coords)
+            if len(coords) > 1:
+                coords = coords[:-1]
+            for x, y in coords:
+                key = (int(round(float(x) * _Q_SCALE)), int(round(float(y) * _Q_SCALE)))
+                if key in seen:
+                    return True
+                seen.add(key)
+        return False
+
+    if not any(has_ring_point_contact(poly) for poly in polygons_of(geom)):
+        return geom
+    epsilon = max(1e-7, min(float(pixel_size_mm) * 1e-4, 1e-4))
+    try:
+        repaired = geom.buffer(epsilon, quad_segs=1).buffer(-epsilon, quad_segs=1).buffer(0)
+        if not getattr(repaired, "is_empty", True) and float(getattr(repaired, "area", 0.0)) > 1e-12:
+            return repaired
+    except Exception:
+        pass
+    return geom
+
+
 def _build_binary_vector_mesh(
     path: str | Path,
     *,
@@ -174,6 +221,10 @@ def _build_binary_vector_mesh(
     from shapely.geometry import Polygon, MultiPolygon, box
     from shapely.geometry.polygon import orient
     from shapely.ops import triangulate, unary_union
+    try:
+        from shapely import constrained_delaunay_triangles as constrained_triangulate
+    except Exception:  # pragma: no cover - Shapely < 2.1 fallback
+        constrained_triangulate = None
 
     pixel = max(1e-6, float(pixel_size_mm))
     max_h = max(0.0, float(max_height_mm))
@@ -225,6 +276,7 @@ def _build_binary_vector_mesh(
 
     merged = unary_union(rects)
     merged = _smooth_binary_geometry(merged, pixel_size_mm=pixel, smooth=float(smooth))
+    merged = _separate_polygon_point_contacts(merged, pixel_size_mm=pixel)
     if merged.is_empty:
         raise ValueError(
             "Binary mask vectorization failed. Try another threshold or a higher-contrast image."
@@ -281,11 +333,18 @@ def _build_binary_vector_mesh(
     # Step 2: polygon triangulation for top/bottom caps + side walls.
     for poly_index, poly in enumerate(polygons, start=1):
         vertex_scope[0] = int(poly_index)
-        for tri in triangulate(poly):
+        if constrained_triangulate is not None:
+            triangulated_geometry = constrained_triangulate(poly)
+            triangulated = getattr(triangulated_geometry, "geoms", [triangulated_geometry])
+        else:  # pragma: no cover - Shapely < 2.1 fallback
+            triangulated = triangulate(poly)
+        for tri in triangulated:
             if tri.is_empty or tri.area <= 1e-12:
                 continue
-            rp = tri.representative_point()
-            if not poly.covers(rp):
+            # Unconstrained Delaunay triangles can have their centroid inside a
+            # concave polygon while crossing an exterior or hole boundary.  A
+            # full-triangle coverage check prevents cap/side-wall mismatches.
+            if not poly.covers(tri):
                 continue
             coords = [(float(x), float(y)) for x, y in list(tri.exterior.coords)[:-1]]
             if len(coords) != 3:
@@ -302,7 +361,13 @@ def _build_binary_vector_mesh(
             inner = [(float(x), float(y)) for x, y in list(ring.coords)]
             add_side_ring(inner, reverse=True)
 
-    mesh = WorkMesh(name=name, vertices=vertices, triangles=triangles, color=color)
+    mesh = WorkMesh(
+        name=name,
+        vertices=vertices,
+        triangles=triangles,
+        color=color,
+        metadata={"source_tool": "mask_relief", "boolean_skip_merge": True},
+    )
     try:
         setattr(mesh, "_lps_skip_boolean_merge", True)
     except Exception:

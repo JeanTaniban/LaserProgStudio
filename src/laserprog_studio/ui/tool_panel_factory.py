@@ -124,10 +124,13 @@ class ToolPanelFactory:
         owner.joint_count.setDecimals(0)
         owner.joint_single_probe = QCheckBox("Fast depth")
         owner.joint_single_probe.setChecked(True)
+        owner.joint_subtract_all = QCheckBox("Subtract all")
+        owner.joint_subtract_all.setToolTip("Off: cut only B. On: cut every other scene part crossed by the female slot; A keeps its male tab.")
         owner.joint_debug = QCheckBox("Debug log")
         for label, sp, unit in [("Contact tol", owner.joint_touch_tol, "mm"), ("Clearance", owner.joint_clearance, "mm"), ("Size", owner.joint_size, "mm"), ("Count", owner.joint_count, ""), ("Edge margin", owner.joint_edge_margin, "mm")]:
             v.addLayout(owner._param_row(label, sp, unit))
         v.addWidget(owner.joint_single_probe)
+        v.addWidget(owner.joint_subtract_all)
         v.addWidget(owner.joint_debug)
         b_prev = QPushButton("Add joint to preview")
         b_prev.clicked.connect(owner.generate_joint_preview)

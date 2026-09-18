@@ -42,6 +42,7 @@ class ToolFrame(ttk.Frame):
             "joint_count": tk.StringVar(),
             "joint_edge_margin_mm": tk.StringVar(),
             "single_depth_probe": tk.BooleanVar(),
+            "subtract_all": tk.BooleanVar(),
             "debug_log": tk.BooleanVar(),
         }
 
@@ -64,6 +65,13 @@ class ToolFrame(ttk.Frame):
             variable=self.vars["single_depth_probe"],
         )
         one_probe.grid(row=row, column=0, sticky="w", pady=(0, 6))
+        row += 1
+        subtract_all = ttk.Checkbutton(
+            self,
+            text="Subtract all (cut intersecting scene parts; A keeps its tab)",
+            variable=self.vars["subtract_all"],
+        )
+        subtract_all.grid(row=row, column=0, sticky="w", pady=(0, 6))
         row += 1
         dbg = ttk.Checkbutton(self, text="Enable debug log (joint_builder_debug.log)", variable=self.vars["debug_log"])
         dbg.grid(row=row, column=0, sticky="w", pady=(0, 6))
@@ -106,6 +114,7 @@ class ToolFrame(ttk.Frame):
         self.vars["joint_count"].set(str(self.settings.data.get("joint_count", DEFAULT_SETTINGS["joint_count"])))
         self.vars["joint_edge_margin_mm"].set(str(self.settings.data.get("joint_edge_margin_mm", DEFAULT_SETTINGS["joint_edge_margin_mm"])))
         self.vars["single_depth_probe"].set(bool(self.settings.data.get("single_depth_probe", DEFAULT_SETTINGS["single_depth_probe"])))
+        self.vars["subtract_all"].set(bool(self.settings.data.get("subtract_all", DEFAULT_SETTINGS["subtract_all"])))
         self.vars["debug_log"].set(bool(self.settings.data.get("debug_log", DEFAULT_SETTINGS["debug_log"])))
 
     def _connect_autosave(self) -> None:
@@ -127,6 +136,7 @@ class ToolFrame(ttk.Frame):
             self.settings.data["joint_count"] = int(float(self.vars["joint_count"].get().strip().replace(",", ".")))
             self.settings.data["joint_edge_margin_mm"] = float(self.vars["joint_edge_margin_mm"].get().strip().replace(",", "."))
             self.settings.data["single_depth_probe"] = bool(self.vars["single_depth_probe"].get())
+            self.settings.data["subtract_all"] = bool(self.vars["subtract_all"].get())
             self.settings.data["debug_log"] = bool(self.vars["debug_log"].get())
             self.settings.save()
         except Exception:
@@ -166,6 +176,7 @@ class ToolFrame(ttk.Frame):
             joint_count = int(float(self.vars["joint_count"].get().strip().replace(",", ".")))
             joint_edge_margin = float(self.vars["joint_edge_margin_mm"].get().strip().replace(",", "."))
             single_depth_probe = bool(self.vars["single_depth_probe"].get())
+            subtract_all = bool(self.vars["subtract_all"].get())
             debug_enabled = bool(self.vars["debug_log"].get())
             try:
                 from laserprog_studio.services.debug_mode import is_debug_mode_enabled
@@ -206,6 +217,7 @@ class ToolFrame(ttk.Frame):
                             "joint_count": int(joint_count),
                             "joint_edge_margin": float(joint_edge_margin),
                             "single_depth_probe": bool(single_depth_probe),
+                            "subtract_all": bool(subtract_all),
                             "log_path": str(log_path),
                             "debug_log_version": int(DEBUG_LOG_VERSION),
                         },
@@ -214,21 +226,19 @@ class ToolFrame(ttk.Frame):
                     messagebox.showwarning("Joint builder", f"Cannot write debug log:\n{log_exc}")
                     debug_cb = None
 
-            mesh_a2, mesh_b2 = apply_tab_slot_simple(
-                base_meshes[a],
-                base_meshes[b],
+            out, _changed_indices = apply_tab_slot_to_scene(
+                base_meshes,
+                index_a=int(a),
+                index_b=int(b),
                 touch_tolerance=touch_tol,
                 clearance=clearance,
                 joint_size=joint_size,
                 joint_count=joint_count,
                 joint_edge_margin=joint_edge_margin,
                 single_depth_probe=single_depth_probe,
+                subtract_all=subtract_all,
                 debug=debug_cb,
             )
-
-            out = list(base_meshes)
-            out[a] = mesh_a2
-            out[b] = mesh_b2
             self.context.model_store.set_preview_meshes(out, source_path=self.context.model_store.source_path)
             if debug_cb is not None:
                 try:
@@ -242,4 +252,3 @@ class ToolFrame(ttk.Frame):
             except Exception:
                 pass
             messagebox.showerror("Joint builder", str(exc))
-

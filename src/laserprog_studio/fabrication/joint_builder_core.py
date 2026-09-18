@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from typing import Sequence
+
 try:
     from .joint_builder_probing import *  # type: ignore
 except Exception:  # pragma: no cover
@@ -23,6 +25,45 @@ def _validate_joint_boolean_outputs(
 
     result_stats: dict[str, dict[str, int | bool | float]] = {}
     for role, result_mesh in (("male", male_mesh), ("female", female_mesh)):
+        metadata = dict(getattr(result_mesh, "metadata", {}) or {})
+        # ``boolean_mesh_3d`` has already constructed this exact result with
+        # Manifold and verified its native status.  Its exported tessellation
+        # may contain vertices closer than our diagnostic weld tolerance even
+        # though Manifold itself accepts it (and accepts it again when used as
+        # the input to a later boolean).  Rejecting that canonical result here
+        # turns a successful Joint Builder subtraction into a false failure.
+        #
+        # Do not apply this exception to imported/user meshes: only the private
+        # contract written by ``_finalize_canonical_boolean_mesh`` earns it.
+        if metadata.get("boolean_topology_contract") == "manifold3d_canonical_v1":
+            try:
+                from laserprog_studio.boolean_ops import is_closed_triangle_mesh
+
+                closed, boundary_edges, nonmanifold_edges = is_closed_triangle_mesh(
+                    getattr(result_mesh, "vertices", ()) or (),
+                    getattr(result_mesh, "triangles", ()) or (),
+                )
+            except Exception:
+                closed, boundary_edges, nonmanifold_edges = (False, 1, 1)
+            if not closed:
+                raise ValueError(
+                    "Joint Builder received a malformed canonical boolean result "
+                    f"(boundary_edges={boundary_edges}, nonmanifold_edges={nonmanifold_edges})."
+                )
+            result_stats[role] = {
+                "vertices": int(len(getattr(result_mesh, "vertices", ()) or ())),
+                "triangles": int(len(getattr(result_mesh, "triangles", ()) or ())),
+                "closed": True,
+                "boundary_edges": int(boundary_edges),
+                "nonmanifold_edges": int(nonmanifold_edges),
+                "native_canonical": True,
+            }
+            metadata["boolean_ready"] = True
+            metadata["joint_builder_topology_contract"] = "closed_solid_v1"
+            metadata["joint_builder_geometry_contract"] = "manifold3d_canonical_v1"
+            metadata["boolean_geometric_manifold"] = True
+            result_mesh.metadata = metadata
+            continue
         try:
             topology = require_geometric_boolean_manifold(
                 result_mesh,
@@ -59,7 +100,6 @@ def _validate_joint_boolean_outputs(
             "nonmanifold_edges": int(topology.indexed_nonmanifold_edges),
         })
         result_stats[role] = stats
-        metadata = dict(getattr(result_mesh, "metadata", {}) or {})
         metadata["boolean_ready"] = True
         # Keep the historical key stable for compatibility while recording the
         # stronger geometry-level contract separately.
@@ -84,8 +124,9 @@ def apply_tab_slot_simple(
     joint_count: int = 1,
     joint_edge_margin: float | None = None,
     single_depth_probe: bool = True,
+    return_female_tool: bool = False,
     debug: Callable[[str, dict], None] | None = None,
-) -> tuple[WorkMesh, WorkMesh]:
+) -> tuple[WorkMesh, WorkMesh] | tuple[WorkMesh, WorkMesh, WorkMesh]:
     basis_a = compute_basis(mesh_a)
     basis_b = compute_basis(mesh_b)
 
@@ -236,6 +277,24 @@ def apply_tab_slot_simple(
                     f"Increase tolerance, reduce pin size, reduce N, or reduce edge margin."
                 )
             else:
+                # ``usable`` measures the span between the two *centres*.
+                # It is not enough for it merely to be positive: neighbouring
+                # tab boxes must be at least one tab width apart.  Otherwise
+                # the batched tool contains overlapping solids and a later
+                # union can return an indexed-closed but geometric
+                # non-manifold result.
+                minimum_center_span = float((joint_count - 1) * joint_size)
+                if usable + 1e-6 < minimum_center_span:
+                    if edge_margin is not None:
+                        max_pin_size = float(max(0.0, (span - 2.0 * edge_margin_used) / joint_count))
+                        size_hint = f" For these margins, use a pin size no greater than {max_pin_size:.2f} mm."
+                    else:
+                        size_hint = " Reduce pin size, reduce N, or provide a smaller edge margin."
+                    raise ValueError(
+                        f"Contact surface is too short for {joint_count} separate pins: "
+                        f"available centre span is {usable:.2f} mm but {minimum_center_span:.2f} mm is required "
+                        f"to prevent pin overlap.{size_hint}"
+                    )
                 step = usable / (joint_count - 1)
                 # Use the patch plane basis returned by `_contact_patch_center`.
                 # `contact_n` is only a hint and can be unstable (dist==0 cases).
@@ -405,8 +464,34 @@ def apply_tab_slot_simple(
         thickness_used_for_boolean_depth = float(joint_thickness)
 
         male_size_x = float(joint_size)
-        male_size_y = float(max(0.2, thickness_used_for_boolean_depth * 2.0))
-        male_size_z = float(face_width_z)
+
+        # A tab is an extension of A *towards* B, not a volume centred through
+        # the end of A.  The former depth rule used twice the smallest probe
+        # thickness and centred that volume on the contact plane.  On a thin
+        # upright this consumed several millimetres of the male end and made
+        # the original face look cut away.  Keep only a shallow overlap for a
+        # reliable union, then project the tab across B's actual thickness.
+        male_tab_anchor_depth = float(max(0.05, min(0.25, thickness_a_individual * 0.05)))
+        male_tab_projection_depth = float(max(min_boolean_size_mm, thickness_b_individual))
+        male_size_y = float(max(min_boolean_size_mm, male_tab_anchor_depth + male_tab_projection_depth))
+        # Local +Y follows ``arrow_forward``.  This places the rear face
+        # ``male_tab_anchor_depth`` inside A and the front face flush with the
+        # far side of B.
+        male_center_offset_along_arrow = float(male_size_y / 2.0 - male_tab_anchor_depth)
+
+        # The male tab must overlap the entire thickness of piece A.  Making
+        # its width *exactly* equal to the contact face width leaves its two
+        # side faces coplanar with the source board.  At an exterior board this
+        # produces a valid-looking indexed output with duplicated zero-length
+        # seam cells: manifold3d subsequently reports it as ``NotManifold``.
+        #
+        # Extend both sides by a very small manufacturing-safe overscan.  The
+        # female slot already includes the user clearance on both sides, so up
+        # to 0.01 mm of extra tab width remains well inside the default 0.30 mm
+        # slot allowance.  More importantly, it gives the union a real volume
+        # overlap and prevents the coplanar seam from being emitted at all.
+        male_width_overscan = float(max(0.0005, min(0.005, face_width_z * 0.001)))
+        male_size_z = float(face_width_z + 2.0 * male_width_overscan)
 
         female_size_x_raw = float(joint_size + 2.0 * clearance)
         female_size_z_raw = float(face_width_z + 2.0 * clearance)
@@ -432,6 +517,10 @@ def apply_tab_slot_simple(
             "male_size_x": float(male_size_x),
             "male_size_y": float(male_size_y),
             "male_size_z": float(male_size_z),
+            "male_tab_anchor_depth": float(male_tab_anchor_depth),
+            "male_tab_projection_depth": float(male_tab_projection_depth),
+            "male_center_offset_along_arrow": float(male_center_offset_along_arrow),
+            "male_width_overscan": float(male_width_overscan),
             "female_size_x": float(female_size_x),
             "female_size_y": float(female_size_y),
             "female_size_z": float(female_size_z),
@@ -446,6 +535,7 @@ def apply_tab_slot_simple(
                     "depth_probe_mode_v21": "single_shared" if single_depth_probe else "per_arrow_center",
                     "joint_size_x": float(joint_size),
                     "face_width_z": float(face_width_z),
+                    "male_width_overscan": float(male_width_overscan),
                     "clearance": float(clearance),
                     "raw_thickness_a": float(raw_thickness_a),
                     "raw_thickness_b": float(raw_thickness_b),
@@ -461,6 +551,9 @@ def apply_tab_slot_simple(
                     "joint_thickness_source": str(joint_thickness_source),
                     "joint_thickness_used_for_boolean_depth": float(thickness_used_for_boolean_depth),
                     "boolean_depth_y_before_x2": float(thickness_used_for_boolean_depth),
+                    "male_tab_anchor_depth": float(male_tab_anchor_depth),
+                    "male_tab_projection_depth": float(male_tab_projection_depth),
+                    "male_center_offset_along_arrow": float(male_center_offset_along_arrow),
                     "male_size_xyz": [float(male_size_x), float(male_size_y), float(male_size_z)],
                     "female_size_xyz": [float(female_size_x), float(female_size_y), float(female_size_z)],
                     "decision_note": "V21: if fast mode is checked, this measurement is reused for all pins; otherwise it is recomputed for each arrow origin.",
@@ -607,9 +700,10 @@ def apply_tab_slot_simple(
         female_size_x = float(depth_result["female_size_x"])
         female_size_y = float(depth_result["female_size_y"])
         female_size_z = float(depth_result["female_size_z"])
+        male_center = c3 + arrow_forward * float(depth_result["male_center_offset_along_arrow"])
         cube_male = _make_oriented_boolean_box(
             name=f"joint_male_box_{idx}",
-            center=c3,
+            center=male_center,
             forward=arrow_forward,
             x_axis_hint=face_long_axis,
             size_x_mm=male_size_x,
@@ -638,6 +732,9 @@ def apply_tab_slot_simple(
                 {
                     "index": int(idx),
                     "origin3": c3.tolist(),
+                    "male_tab_center3": male_center.tolist(),
+                    "male_tab_anchor_depth": float(depth_result["male_tab_anchor_depth"]),
+                    "male_tab_projection_depth": float(depth_result["male_tab_projection_depth"]),
                     "a_center_local": [float(ax0), float(ay0), float(aw0)],
                     "b_center_local": [float(bx0), float(by0), float(bw0)],
                     "forward_y": np.array(arrow_forward, dtype=float).tolist(),
@@ -718,6 +815,90 @@ def apply_tab_slot_simple(
             },
         )
 
+    if return_female_tool:
+        return male_mesh, female_mesh, female_tool
     return male_mesh, female_mesh
+
+
+def _aabb_overlap(mesh_a: WorkMesh, mesh_b: WorkMesh, *, tolerance_mm: float = 1e-7) -> bool:
+    """Cheap conservative filter before applying a scene-wide joint cut."""
+
+    try:
+        points_a = np.asarray(mesh_a.vertices, dtype=float)
+        points_b = np.asarray(mesh_b.vertices, dtype=float)
+        if points_a.size == 0 or points_b.size == 0:
+            return False
+        lower_a, upper_a = np.min(points_a[:, :3], axis=0), np.max(points_a[:, :3], axis=0)
+        lower_b, upper_b = np.min(points_b[:, :3], axis=0), np.max(points_b[:, :3], axis=0)
+        return bool(np.all(upper_a + tolerance_mm >= lower_b) and np.all(upper_b + tolerance_mm >= lower_a))
+    except Exception:
+        # Keep the operation semantically global if a third-party mesh does not
+        # expose ordinary point data; the boolean layer will report any issue.
+        return True
+
+
+def apply_tab_slot_to_scene(
+    meshes: Sequence[WorkMesh],
+    *,
+    index_a: int,
+    index_b: int,
+    touch_tolerance: float,
+    clearance: float,
+    joint_size: float = 10.0,
+    joint_count: int = 1,
+    joint_edge_margin: float | None = None,
+    single_depth_probe: bool = True,
+    subtract_all: bool = False,
+    debug: Callable[[str, dict], None] | None = None,
+) -> tuple[list[WorkMesh], tuple[int, ...]]:
+    """Build a joint and optionally apply its female cut to scene neighbours.
+
+    ``subtract_all=False`` is exactly the historic A/B behaviour.  When true,
+    the female cutting volume is also subtracted from every *other* intersecting
+    scene mesh.  A is deliberately excluded: it owns the male tab and cutting it
+    again would erase the joint that has just been added.
+    """
+
+    out = list(meshes)
+    if not (0 <= int(index_a) < len(out) and 0 <= int(index_b) < len(out) and int(index_a) != int(index_b)):
+        raise ValueError("Joint Builder received invalid scene part indices.")
+    a, b = int(index_a), int(index_b)
+    result = apply_tab_slot_simple(
+        out[a],
+        out[b],
+        touch_tolerance=touch_tolerance,
+        clearance=clearance,
+        joint_size=joint_size,
+        joint_count=joint_count,
+        joint_edge_margin=joint_edge_margin,
+        single_depth_probe=single_depth_probe,
+        return_female_tool=bool(subtract_all),
+        debug=debug,
+    )
+    if not subtract_all:
+        male_mesh, female_mesh = result
+        out[a], out[b] = male_mesh, female_mesh
+        return out, (a, b)
+
+    male_mesh, female_mesh, female_tool = result
+    out[a], out[b] = male_mesh, female_mesh
+    changed = [a, b]
+    for index, source_mesh in enumerate(meshes):
+        if index in (a, b) or not _aabb_overlap(source_mesh, female_tool):
+            continue
+        cut_mesh = _boolean_3d(source_mesh, female_tool, op="difference")
+        cut_mesh.name = source_mesh.name
+        cut_mesh.color = source_mesh.color
+        # The same strict contract that protects A/B also protects every extra
+        # target altered by the global cut before the preview can be applied.
+        _validate_joint_boolean_outputs(cut_mesh, cut_mesh, debug=None)
+        metadata = dict(getattr(cut_mesh, "metadata", {}) or {})
+        metadata["joint_builder_global_subtract"] = True
+        cut_mesh.metadata = metadata
+        out[index] = cut_mesh
+        changed.append(index)
+    if debug:
+        debug("joint_global_subtract", {"enabled": True, "changed_indices": changed, "excluded_male_index": a})
+    return out, tuple(changed)
 
 __all__ = [name for name in globals() if not name.startswith("__")]

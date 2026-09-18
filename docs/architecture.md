@@ -100,3 +100,32 @@ py -3.12 scripts\quality_gate.py --with-tests --pytest-args -q
 The gate blocks large runtime files, `*Mixin` classes or aliases, retired source
 wording, built-in hook tools, direct tool-core imports from built-in tools, and
 Python cache artifacts in the product tree.
+
+## Shared geometry integrity contract
+
+Geometry-producing tools must not implement their own generic mesh-validity stack.
+
+The project uses one shared, versioned geometry-integrity foundation. A tool declares
+the geometric role of its outputs and the kind of mutation it performs; common
+runtime services own structural audit, component analysis, Manifold certification,
+optional conservative repair, certification fingerprints and final commit gates.
+
+The architectural rules are:
+
+- tools own geometry-generation or geometry-transformation business logic;
+- common integrity rules are exposed through the public `tool_api.geometry` boundary;
+- `SOLID`, `SOLID_SET`, `SURFACE`, `ASSEMBLY`, `VISUAL_PROXY` and helper outputs
+  are distinct contracts and must not be conflated;
+- persistent solid outputs are checked by a shared Solid Commit Gate rather than by
+  ad-hoc per-tool validators;
+- Boolean operands are certified through the same common profile regardless of which
+  tool created them;
+- measurement/render helpers must not be embedded as fake solid vertices or faces;
+- coordinate welding is a repair/compatibility strategy, not the universal definition
+  of manifoldness;
+- tool-specific preflight remains allowed for domain constraints, but generic mesh
+  integrity must stay centralized.
+
+See `docs/CDC_MISSION_GEOMETRY_INTEGRITY_FOUNDATION.md` for the detailed target
+architecture, migration plan and validation criteria.
+

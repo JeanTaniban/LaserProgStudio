@@ -368,6 +368,7 @@ def _folding_solid_probe() -> dict[str, Any]:
     )
     source.name = "folding_closed_box"
     plane = arbitrary_face_plane((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+    mid_plane = arbitrary_face_plane((0.0, 0.0, 0.5), (0.0, 0.0, 1.0))
     out["source"] = audit_mesh(source)
     cases = [
         ("uniform_90", 90.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
@@ -392,6 +393,21 @@ def _folding_solid_probe() -> dict[str, Any]:
             out[name] = audit_mesh(folded)
         except Exception as exc:
             out[name] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    for angle in (90.0, 180.0, 270.0, 450.0, 720.0):
+        curve = FoldingCurve(
+            start=(0.0, 0.0, 0.5),
+            end=(10.0, 0.0, 0.5),
+            mode=FoldingMode.LIVING_HINGE.value,
+            fold_angle_deg=angle,
+            shape_angles_deg=(0.0, 0.0, 0.0),
+            deformation_mode=FoldingDeformationMode.UNIFORM.value,
+        )
+        try:
+            folded = deform_mesh(source, mid_plane, curve)
+            out[f"midplane_uniform_{angle:.0f}"] = audit_mesh(folded)
+        except Exception as exc:
+            out[f"midplane_uniform_{angle:.0f}"] = {"error": f"{type(exc).__name__}: {exc}"}
     return out
 
 

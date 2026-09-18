@@ -54,9 +54,11 @@ ctx.operations.register(
     self._operation,
     geometry_contract=GeometryOperationContract(
         mutation=GeometryMutation.REBUILD,
-        output_role=GeometryRole.SOLID,
-        validation=GeometryProfile.MANUFACTURING_SOLID,
-        components=ComponentPolicy.PRESERVE,
+        default_output=GeometryArtifactContract(
+            role=GeometryRole.SOLID,
+            validation=GeometryProfile.MANUFACTURING_SOLID,
+            components=ComponentPolicy.PRESERVE,
+        ),
         repair=RepairPolicy.NONE,
     ),
 )
@@ -695,13 +697,65 @@ La nouvelle frontière standard est un `GeometryChangeSet` :
 
 ```python
 GeometryChangeSet(
-    added=(...),
-    replaced=((mesh_id, new_mesh), ...),
+    added=(
+        GeometryAddition(
+            mesh=new_mesh,
+            contract=GeometryArtifactContract(
+                role=GeometryRole.SOLID,
+                validation=GeometryProfile.MANUFACTURING_SOLID,
+            ),
+        ),
+    ),
+    replaced=(
+        GeometryReplacement(
+            mesh_id=source_id,
+            mesh=new_mesh,
+            contract=GeometryArtifactContract(...),
+        ),
+    ),
     removed=(mesh_id, ...),
 )
 ```
 
 Le but est de ne **jamais rescanner toute la scène** simplement parce qu’un outil modifie un objet.
+
+### Contrat par artefact de sortie
+
+Le contrat de l’opération décrit la mutation commune et peut fournir un `default_output`, mais **chaque ajout/remplacement peut surcharger son propre `GeometryArtifactContract`**.
+
+C’est obligatoire pour les opérations hétérogènes.
+
+Exemple Cloth Apply :
+
+```python
+GeometryChangeSet(
+    added=(
+        GeometryAddition(
+            mesh=folded,
+            contract=GeometryArtifactContract(
+                role=GeometryRole.SOLID,
+                validation=GeometryProfile.MANUFACTURING_SOLID,
+            ),
+        ),
+        GeometryAddition(
+            mesh=flat_pattern,
+            contract=GeometryArtifactContract(
+                role=GeometryRole.SURFACE,
+                validation=GeometryProfile.SURFACE,
+            ),
+        ),
+    ),
+)
+```
+
+Ainsi :
+
+- le folded est certifié comme volume ;
+- le flat pattern reste volontairement ouvert ;
+- aucune exception `if tool_id == "cloth"` n’entre dans le socle ;
+- un futur outil peut produire plusieurs rôles sans modifier l’architecture centrale.
+
+Pour un outil simple comme Simplify, le `default_output` évite de répéter le même contrat sur chaque replacement.
 
 Le Solid Commit Gate certifie uniquement :
 
@@ -1778,7 +1832,8 @@ La mission est validée seulement si :
 
 - un seul moteur commun réalise les contrôles génériques ;
 - aucun outil migré ne recode son propre test de manifoldness générique ;
-- chaque sortie géométrique persistante possède un rôle explicite ou un rôle hérité de manière déterministe ;
+- chaque sortie géométrique persistante possède un `GeometryArtifactContract` explicite ou un default d’opération hérité de manière déterministe ;
+- une même opération peut produire simultanément des rôles différents sans branche spécifique dans le socle ;
 - les solides passent par le Solid Commit Gate ;
 - aucun Tool/Controller runtime ne peut écrire une nouvelle géométrie dans ModelStore en contournant GeometryMutationGateway ;
 - les outils Creator existants sont couverts sans appel de validation local grâce à l’intégration DocumentFacade/PreviewSession ;

@@ -626,6 +626,41 @@ def main() -> int:
                     "audit": audit_mesh(wm),
                 }
             mechanical_report["canonical_conversion"] = conversions
+
+            # Reproduce LaserProg's chained-boolean architecture while varying
+            # only the intermediate Manifold -> WorkMesh conversion precision.
+            chained = {}
+            for method_name in ("to_mesh", "to_mesh64"):
+                current = raw_manifolds[0]
+                history = []
+                available = True
+                for step_idx, next_manifold in enumerate(raw_manifolds[1:], start=1):
+                    current = current.add(next_manifold) if hasattr(current, "add") else (current + next_manifold)
+                    method = getattr(current, method_name, None)
+                    if not callable(method):
+                        available = False
+                        break
+                    converted = method()
+                    vp = _np.asarray(converted.vert_properties, dtype=float)
+                    tp = _np.asarray(converted.tri_verts, dtype=_np.int32)
+                    wm = WorkMesh(
+                        name=f"mechanical_chain_{method_name}_{step_idx}",
+                        vertices=[tuple(map(float, row[:3])) for row in vp],
+                        triangles=[tuple(map(int, row[:3])) for row in tp],
+                    )
+                    history.append(audit_mesh(wm))
+                    if step_idx < len(raw_manifolds) - 1:
+                        current, _prepared, _attempts = _construct_valid_manifold(
+                            wm,
+                            label=f"mechanical_chain_{method_name}_{step_idx}",
+                            np=_np,
+                            m3d=m3d,
+                        )
+                chained[method_name] = {
+                    "available": available,
+                    "steps": history,
+                }
+            mechanical_report["intermediate_conversion_chain"] = chained
         except Exception as exc:
             mechanical_report["canonical_conversion"] = {
                 "error": f"{type(exc).__name__}: {exc}",

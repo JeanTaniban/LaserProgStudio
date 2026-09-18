@@ -430,6 +430,29 @@ def main() -> int:
 
     report["relief"] = _relief_probe()
 
+    for example_name in ("box.3mf", "layflat_parts.3mf"):
+        example_path = Path("examples") / example_name
+        try:
+            example_meshes = read_3mf_meshes(example_path)
+            report["formats"][f"example_{example_name}"] = {
+                "mesh_count": len(example_meshes),
+                "meshes": [
+                    audit_mesh(
+                        WorkMesh(
+                            name=obj.name,
+                            vertices=list(obj.vertices),
+                            triangles=list(obj.triangles),
+                            color=obj.color,
+                        )
+                    )
+                    for obj in example_meshes
+                ],
+            }
+        except Exception as exc:
+            report["formats"][f"example_{example_name}"] = {
+                "error": f"{type(exc).__name__}: {exc}"
+            }
+
     primitives = {
         "primitive_box": build_box(_req("box")),
         "primitive_cylinder": build_cylinder(_req("cylinder")),

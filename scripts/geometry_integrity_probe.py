@@ -335,6 +335,16 @@ def _layflat_workmesh(mesh: Any, name: str) -> WorkMesh:
     return WorkMesh(name=name + "_layflat", vertices=list(piece.vertices), triangles=list(piece.triangles), color=piece.color)
 
 
+def _mirror_x(mesh: Any, name: str) -> WorkMesh:
+    return WorkMesh(
+        name=name,
+        vertices=[(-float(v[0]), float(v[1]), float(v[2])) for v in (getattr(mesh, "vertices", []) or [])],
+        triangles=[tuple(int(i) for i in tri[:3]) for tri in (getattr(mesh, "triangles", []) or [])],
+        color=str(getattr(mesh, "color", "#B8B8B8") or "#B8B8B8"),
+        metadata=dict(getattr(mesh, "metadata", {}) or {}),
+    )
+
+
 def _relief_probe() -> dict[str, Any]:
     out: dict[str, Any] = {}
     try:
@@ -527,10 +537,48 @@ def main() -> int:
         "mesh": audit_mesh(hollow.meshes[0]) if hollow.ok and hollow.meshes else None,
     }
     if hollow.ok and hollow.meshes:
+        hollow_mesh = hollow.meshes[0]
         report["inter_tool"]["hollow_to_layflat"] = {
-            "source": audit_mesh(hollow.meshes[0]),
-            "layflat": audit_mesh(_layflat_workmesh(hollow.meshes[0], "hollow_box")),
+            "source": audit_mesh(hollow_mesh),
+            "layflat": audit_mesh(_layflat_workmesh(hollow_mesh, "hollow_box")),
         }
+        mirrored_hollow = _mirror_x(hollow_mesh, "hollow_box_mirrored")
+        report["inter_tool"]["hollow_mirrored"] = audit_mesh(mirrored_hollow)
+
+        try:
+            from laserprog_studio.geometry_ops.mesh_repair import repair_work_mesh
+            repaired_hollow, repair_report = repair_work_mesh(
+                hollow_mesh,
+                tolerance_mm=1.0e-6,
+                fill_holes=False,
+                remove_tiny_faces=False,
+                optional_backends=False,
+            )
+            report["inter_tool"]["hollow_to_repair"] = {
+                "repair_report": dict(repair_report.__dict__),
+                "source": audit_mesh(hollow_mesh),
+                "result": audit_mesh(repaired_hollow),
+            }
+        except Exception as exc:
+            report["inter_tool"]["hollow_to_repair"] = {
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        try:
+            split_hollow = split_mesh_by_plane(
+                hollow_mesh,
+                origin=(0.0, 0.0, 0.0),
+                normal=(1.0, 0.0, 0.0),
+            )
+            report["inter_tool"]["hollow_to_split"] = {
+                "piece_count": len(split_hollow),
+                "pieces": [audit_mesh(piece) for piece in split_hollow],
+            }
+        except Exception as exc:
+            report["inter_tool"]["hollow_to_split"] = {
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
         try:
             from laserprog_studio.boolean_ops import boolean_difference
             cavity_probe = build_box(_req("box", size_x=4.0, size_y=4.0, size_z=4.0))
@@ -554,6 +602,17 @@ def main() -> int:
     try:
         dumbbell = _dumbbell()
         report["cases"]["dumbbell_source"] = audit_mesh(dumbbell)
+        try:
+            hollow_dumbbell = hollow_selected_meshes([dumbbell], [0], thickness=1.0)
+            report["inter_tool"]["hollow_concave_dumbbell"] = {
+                "ok": bool(hollow_dumbbell.ok),
+                "errors": list(hollow_dumbbell.errors),
+                "mesh": audit_mesh(hollow_dumbbell.meshes[0]) if hollow_dumbbell.ok and hollow_dumbbell.meshes else None,
+            }
+        except Exception as exc:
+            report["inter_tool"]["hollow_concave_dumbbell"] = {
+                "error": f"{type(exc).__name__}: {exc}",
+            }
         report["simplify"]["manifold_dumbbell"] = _manifold_simplify_probe(
             dumbbell,
             (0.0, 0.01, 0.05, 0.10, 0.25, 0.50, 1.0),

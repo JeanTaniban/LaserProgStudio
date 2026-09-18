@@ -244,6 +244,29 @@ def _vent_flared() -> WorkMesh:
     return make_vent_path_mesh(draft, name="probe_vent_flared")
 
 
+def _seam_split_cube(*, epsilon: float = 0.0, name: str = "seam_split_cube") -> WorkMesh:
+    # Six independently tessellated faces. Shared geometric corners deliberately
+    # use distinct indices, modelling CAD/export seam duplication.
+    s = 10.0
+    faces = [
+        ((-s,-s,-s),( s,-s,-s),( s, s,-s),(-s, s,-s)),
+        ((-s,-s, s),(-s, s, s),( s, s, s),( s,-s, s)),
+        ((-s,-s,-s),(-s,-s, s),( s,-s, s),( s,-s,-s)),
+        (( s,-s,-s),( s,-s, s),( s, s, s),( s, s,-s)),
+        (( s, s,-s),( s, s, s),(-s, s, s),(-s, s,-s)),
+        ((-s, s,-s),(-s, s, s),(-s,-s, s),(-s,-s,-s)),
+    ]
+    vertices: list[tuple[float,float,float]] = []
+    triangles: list[tuple[int,int,int]] = []
+    for face_idx, quad in enumerate(faces):
+        base = len(vertices)
+        # Optional microscopic per-face offset models almost-coincident seams.
+        delta = float(epsilon) * float(face_idx)
+        vertices.extend((float(x)+delta, float(y), float(z)) for x,y,z in quad)
+        triangles.extend(((base, base+1, base+2), (base, base+2, base+3)))
+    return WorkMesh(name=name, vertices=vertices, triangles=triangles)
+
+
 def _touching_boxes() -> WorkMesh:
     a = build_box(_req("box", pos_x=0.0, pos_y=0.0, pos_z=0.0))
     b = build_box(_req("box", pos_x=20.0, pos_y=20.0, pos_z=20.0))
@@ -1078,6 +1101,8 @@ def main() -> int:
         "touching_boxes_indexed_distinct": _touching_boxes(),
         "touching_boxes_edge_contact": _touching_pair((20.0, 20.0, 0.0), "two_boxes_edge_contact"),
         "touching_boxes_face_contact": _touching_pair((20.0, 0.0, 0.0), "two_boxes_face_contact"),
+        "seam_split_cube_exact": _seam_split_cube(epsilon=0.0, name="seam_split_cube_exact"),
+        "seam_split_cube_near": _seam_split_cube(epsilon=1.0e-7, name="seam_split_cube_near"),
     }
     for name, mesh in primitives.items():
         report["cases"][name] = audit_mesh(mesh)

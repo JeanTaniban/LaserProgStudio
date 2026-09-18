@@ -62,6 +62,24 @@ def _component_triangle_counts(triangles: list[tuple[int, int, int]]) -> list[in
     return sorted(sizes, reverse=True)
 
 
+def _manifold_metrics(value: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, method_name in (("volume", "volume"), ("surface_area", "surface_area")):
+        method = getattr(value, method_name, None)
+        if callable(method):
+            try:
+                out[key] = float(method())
+            except Exception:
+                pass
+    decompose = getattr(value, "decompose", None)
+    if callable(decompose):
+        try:
+            out["body_count"] = len(tuple(decompose()))
+        except Exception:
+            pass
+    return out
+
+
 def _manifold_probe(mesh: Any, *, merge: bool) -> dict[str, Any]:
     try:
         import manifold3d as m3d
@@ -74,11 +92,39 @@ def _manifold_probe(mesh: Any, *, merge: bool) -> dict[str, Any]:
             merge=bool(merge),
             prefer_64bit=True,
         )
-        return {
+        result = {
             "status": str(construction.status),
             "valid": bool(manifold_is_valid(construction.manifold, m3d)),
             "merge_changed": bool(construction.merge_changed),
         }
+        result.update(_manifold_metrics(construction.manifold))
+        return result
+    except Exception as exc:
+        return {"status": f"exception:{type(exc).__name__}", "valid": False, "error": str(exc)}
+
+
+def _production_boolean_probe(mesh: Any) -> dict[str, Any]:
+    try:
+        import manifold3d as m3d
+        from laserprog_studio.boolean_ops import _prepared_boolean_arrays
+
+        vertices, triangles, skip_merge = _prepared_boolean_arrays(mesh, label="probe")
+        construction = construct_manifold(
+            m3d,
+            vertices=vertices,
+            triangles=triangles,
+            merge=not bool(skip_merge),
+            prefer_64bit=True,
+        )
+        result = {
+            "status": str(construction.status),
+            "valid": bool(manifold_is_valid(construction.manifold, m3d)),
+            "merge_changed": bool(construction.merge_changed),
+            "skip_merge": bool(skip_merge),
+            "prepared_triangles": int(len(triangles)),
+        }
+        result.update(_manifold_metrics(construction.manifold))
+        return result
     except Exception as exc:
         return {"status": f"exception:{type(exc).__name__}", "valid": False, "error": str(exc)}
 
@@ -137,6 +183,7 @@ def audit_mesh(mesh: Any) -> dict[str, Any]:
         "geometric_weld_contract": topo,
         "manifold_direct": _manifold_probe(mesh, merge=False),
         "manifold_after_merge": _manifold_probe(mesh, merge=True),
+        "production_boolean_preparation": _production_boolean_probe(mesh),
     }
 
 
@@ -188,7 +235,19 @@ def _dumbbell() -> WorkMesh:
 
 
 def main() -> int:
-    report: dict[str, Any] = {"cases": {}, "simplify": {}, "inter_tool": {}}
+    try:
+        import manifold3d as m3d
+        manifold_capabilities = {
+            "version": str(getattr(m3d, "__version__", "unknown")),
+            "has_mesh64": bool(hasattr(m3d, "Mesh64")),
+            "manifold_methods": sorted(
+                name for name in ("simplify", "decompose", "refine", "volume", "surface_area")
+                if hasattr(m3d.Manifold, name)
+            ),
+        }
+    except Exception as exc:
+        manifold_capabilities = {"error": f"{type(exc).__name__}: {exc}"}
+    report: dict[str, Any] = {"manifold": manifold_capabilities, "cases": {}, "simplify": {}, "inter_tool": {}}
 
     primitives = {
         "primitive_box": build_box(_req("box")),

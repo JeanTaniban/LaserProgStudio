@@ -732,6 +732,17 @@ def main() -> int:
         }
         report["inter_tool"]["hollow_3mf_roundtrip"] = _three_mf_roundtrip_probe(hollow_mesh)
         report["inter_tool"]["hollow_project_roundtrip"] = _project_roundtrip_probe(hollow_mesh)
+        try:
+            from laserprog_studio.boolean_ops import split_disconnected_mesh
+            separated_hollow = split_disconnected_mesh(hollow_mesh)
+            report["inter_tool"]["hollow_to_boolean_separate"] = {
+                "part_count": len(separated_hollow),
+                "parts": [audit_mesh(part) for part in separated_hollow],
+            }
+        except Exception as exc:
+            report["inter_tool"]["hollow_to_boolean_separate"] = {
+                "error": f"{type(exc).__name__}: {exc}",
+            }
         mirrored_hollow = _mirror_x(hollow_mesh, "hollow_box_mirrored")
         report["inter_tool"]["hollow_mirrored"] = audit_mesh(mirrored_hollow)
 

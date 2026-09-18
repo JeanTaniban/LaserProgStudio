@@ -193,6 +193,14 @@ La fusion de sommets par coordonnées n’est pas une définition universelle de
 
 Une soudure ou `Mesh.merge()` n’intervient qu’après échec du chemin direct. Elle reste un best-effort du kernel, pas une preuve indépendante.
 
+Les tests de contact ont été étendus :
+
+- contact ponctuel : Manifold direct `NoError`, 2 corps ;
+- contact par arête : Manifold direct `NoError`, 2 corps ;
+- contact par face : Manifold direct `NoError`, 2 corps.
+
+Dans les trois cas, la soudure géométrique produit des sommets/arêtes non-manifold alors que les deux solides indexés restent deux volumes valides. Le validateur welded devient donc un diagnostic de coïncidence/contact potentiel, jamais un rejet universel.
+
 Toute adaptation produit un objet éphémère :
 
 ```python
@@ -903,6 +911,15 @@ Deux cubes qui se chevauchent et sont regroupés par Lay Flat donnent en outre u
 
 Un fixture 3MF synthétique en pouces a été chargé avec une étendue `1.0` au lieu de `25.4`. La conversion d’unité est absente du reader utilisé par `ModelStore.load_3mf()`.
 
+Un second fixture applique une transformation miroir X via la matrice 3MF. Le reader applique correctement les coordonnées transformées mais conserve le winding source :
+
+- topologie indexée fermée ;
+- zéro conflit local d’orientation ;
+- Manifold direct `NoError` ;
+- volume signé `-1/6`.
+
+La préparation actuelle retourne ensuite `+1/6` parce qu’elle réoriente le mesh. La cible devient plus stricte : l’import doit conserver la transformation géométrique, le qualificatif commun détecte le volume global négatif, puis `GLOBAL_WINDING_FLIP` fournit la représentation solide positive sans casser les cavités.
+
 ### Relief
 
 Cas mesurés :
@@ -1014,11 +1031,14 @@ Une adaptation d’orientation multi-shell doit respecter l’imbrication extér
 Les candidats d’adaptation sont évalués par coût croissant, sans modifier la source :
 
 1. `DIRECT` — aucune modification ;
-2. `CONSISTENT_WINDING` — seulement propagation locale de winding partagé, sans forcer chaque shell positive ;
-3. `MANIFOLD_MERGE` — best-effort du kernel ;
-4. `CONSISTENT_WINDING + MANIFOLD_MERGE` ;
-5. nettoyage conservateur sans déplacement significatif ;
-6. réparation explicite/reconstruction.
+2. `GLOBAL_WINDING_FLIP` — inversion de tous les triangles lorsque la topologie est cohérente mais que le volume matériel global est signé négatif ;
+3. `CONSISTENT_WINDING` — propagation locale du winding partagé, sans forcer chaque shell positive ;
+4. `MANIFOLD_MERGE` — best-effort du kernel ;
+5. `CONSISTENT_WINDING + MANIFOLD_MERGE` ;
+6. nettoyage conservateur sans déplacement significatif ;
+7. réparation explicite/reconstruction.
+
+`GLOBAL_WINDING_FLIP` préserve les relations extérieur/cavité parce que toutes les shells sont inversées ensemble. Il est adapté aux imports transformés par une matrice de déterminant négatif. Il ne doit pas être remplacé par « rendre chaque shell positive ».
 
 Dès qu’un candidat satisfait **à la fois** KernelCompatibility et SemanticValidity, le pipeline s’arrête.
 
@@ -1046,7 +1066,7 @@ La mission est validée seulement si :
 - les données de mesure Vent ne sont plus dans le mesh solide ;
 - Lay Flat ne présente plus une concaténation comme une union ;
 - Mechanical ne masque plus un échec Boolean par une concaténation ;
-- les régressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes`, `Acoustic skirt`, `Hollow cavity`, `Hollow → Lay Flat`, `Lay Flat overlap` et `3MF inch` sont verrouillées par des tests ;
+- les régressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes point/edge/face`, `Acoustic skirt`, `Hollow cavity`, `Hollow → Lay Flat`, `Lay Flat overlap`, `3MF inch` et `3MF mirrored instance` sont verrouillées par des tests ;
 - tous les tests unitaires du socle passent ;
 - les chaînes inter-outils ciblées passent ;
 - `scripts/quality_gate.py` reste vert ;

@@ -810,6 +810,19 @@ Une vraie fusion volumique doit passer par le pipeline Boolean et produire une s
 
 Un échec de Boolean ne doit plus être remplacé silencieusement par une concaténation prétendant être une pièce fusionnée.
 
+### Cloth
+
+Cloth démontre pourquoi le rôle géométrique doit piloter le gate :
+
+- la sortie folded 3D du fixture rectangle est un `SOLID` fermé, 12 triangles, 1 corps, Manifold direct `NoError`, volume `120 mm³` ;
+- la sortie flat pattern est volontairement une `SURFACE` de 2 triangles avec 4 boundary edges et Manifold `NotManifold`.
+
+Le flat pattern ne doit donc jamais être « réparé » ou refusé par un profil solide.
+
+La solidification Cloth écrit actuellement `_lps_skip_boolean_merge=True` en attribut runtime afin d’éviter qu’un merge spatial reconnecte des Cut boundaries distinctes. Comme les attributs `_lps_*` ne survivent pas au project Save/Load, cette exception est une dette similaire à Image Relief.
+
+Décision cible : Cloth déclare son contrat via le socle public. Le préparateur commun doit pouvoir reconnaître/certifier la topologie directement sans dépendre d’un attribut runtime privé.
+
 ---
 
 ## 14. Données auxiliaires
@@ -1100,6 +1113,60 @@ Elle doit couvrir au minimum :
 - invalidation du certificat après modification ;
 - persistance Save/Load ;
 - résultats identiques sur plusieurs exécutions.
+
+---
+
+## 20.1 Matrice de couverture des outils intégrés
+
+La mission ne peut pas être déclarée terminée sur la seule base de quelques outils critiques. Chaque outil intégré est classé par rôle et doit posséder une preuve adaptée à son contrat.
+
+| Outil | Nature géométrique | Contrat cible | Preuve runtime actuelle |
+|---|---|---|---|
+| Primitives | producteur de solides | `SOLID / GENERATE` | box/cylinder/cone/sphere audités |
+| Box Generator | 6 solides + groupe scène | 6 × `SOLID`, assembly hors WorkMesh | 6 panneaux DIRECT_CERTIFIED sur Linux/Windows |
+| Plan Tracer | producteur de solide extrudé | `SOLID / GENERATE` | fixture avec trou DIRECT_CERTIFIED, 3300 mm³ |
+| Joint Builder | modifie 2+ solides | `SOLID / BOOLEAN` | male/female réels DIRECT_CERTIFIED |
+| Vent Generator | producteur de solide | `SOLID / GENERATE` | mesh fermé mais 8 vertices auxiliaires ; Vent→Hollow casse |
+| Mechanical Motion | plusieurs solides/compound | `SOLID` ou groupe scène selon intention | engrenage valide ; compound Boolean vs concat documenté |
+| Folding | déformation de solide | `SOLID / PRESERVE_TOPOLOGY` + fidélité matière | volume drift et self-overlap reproduits |
+| Cloth folded | solide mince | `SOLID / GENERATE` | rectangle 30×20 DIRECT_CERTIFIED, 120 mm³ |
+| Cloth flat | patron ouvert volontaire | `SURFACE` | 2 triangles, 4 boundary edges : ouvert par conception |
+| Acoustic Diffuser | producteur de solides | `SOLID / GENERATE` | core direct ; skirt nécessite winding fallback |
+| Relief texte | producteur multi-corps | `SOLID_SET / GENERATE` | AB8 : 3 régions solides légitimes |
+| Relief image | producteur de solide | `SOLID / GENERATE` | grayscale direct ; binary nécessite winding fallback |
+| Simplify | reconstruction | rôle hérité + `REBUILD` | pollution ouverte reproduite ; Manifold.simplify peut changer connectivité |
+| Repair Mesh | réparation | rôle hérité + `REPAIR` | corruption de cavité Hollow reproduite |
+| Extrude Down | reconstruction | `SOLID / REBUILD` | fermé mais winding incohérent ; fallback commun requis |
+| Hollow | reconstruction avec cavité | `SOLID / REBUILD + ALLOW_CAVITIES` | cavité valide brute ; préparation actuelle la détruit |
+| Split | 1→N solides | `SOLID / REBUILD` | coupes centrale/oblique saines ; fallback à tester strictement |
+| Lay Flat | transformation/grouping | géométrie des pièces préservée ; grouping scène | cavité détruite par orientation et pseudo-union reproduite |
+| Cavity Volume | consommateur analytique | consomme `ShellNestingTree` | erreur de parité sur nesting profondeur 3 reproduite |
+| Material / Engraving | metadata | `METADATA_ONLY` | ne doit pas invalider certification géométrique |
+| Texture Projection | metadata/decal | `DECAL/METADATA_ONLY` | exclu du gate solide |
+| Selection API test | diagnostic | aucun solide produit | hors contrat de fabrication |
+
+### Règle de couverture
+
+Un outil producteur ou modificateur de géométrie n’est considéré migré que si :
+
+1. son rôle de sortie est déclaré ;
+2. au moins un cas nominal passe dans le probe commun ;
+3. ses cas limites métier ont des tests dédiés ;
+4. sa sortie persistée satisfait directement le profil demandé, ou le gateway canonicalise explicitement le candidat avant commit ;
+5. Linux et Windows satisfont les mêmes invariants, même si un backend autorisé n’est pas byte-identical.
+
+Les outils purement metadata ne doivent pas déclencher de recertification topologique.
+
+### Baseline ciblée actuelle
+
+Le workflow géométrique exécute actuellement 59 tests ciblés sur Linux et Windows :
+
+- 58 réussis ;
+- 1 échec identique sur les deux OS : Vent Generator retourne `round pipe` alors que le test demande `rectangular fill block` ;
+- 0 erreur de collecte ;
+- 0 test skipped dans cette sélection.
+
+Cette baseline reste séparée de la dette générale de la suite complète.
 
 ---
 

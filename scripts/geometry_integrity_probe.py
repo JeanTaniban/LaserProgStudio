@@ -737,17 +737,20 @@ def main() -> int:
     try:
         dumbbell = _dumbbell()
         report["cases"]["dumbbell_source"] = audit_mesh(dumbbell)
-        try:
-            hollow_dumbbell = hollow_selected_meshes([dumbbell], [0], thickness=1.0)
-            report["inter_tool"]["hollow_concave_dumbbell"] = {
-                "ok": bool(hollow_dumbbell.ok),
-                "errors": list(hollow_dumbbell.errors),
-                "mesh": audit_mesh(hollow_dumbbell.meshes[0]) if hollow_dumbbell.ok and hollow_dumbbell.meshes else None,
-            }
-        except Exception as exc:
-            report["inter_tool"]["hollow_concave_dumbbell"] = {
-                "error": f"{type(exc).__name__}: {exc}",
-            }
+        concave_hollow_cases = {}
+        for thickness in (0.25, 0.50, 1.0, 2.0, 4.0):
+            try:
+                hollow_dumbbell = hollow_selected_meshes([dumbbell], [0], thickness=thickness)
+                concave_hollow_cases[f"{thickness:.2f}"] = {
+                    "ok": bool(hollow_dumbbell.ok),
+                    "errors": list(hollow_dumbbell.errors),
+                    "mesh": audit_mesh(hollow_dumbbell.meshes[0]) if hollow_dumbbell.ok and hollow_dumbbell.meshes else None,
+                }
+            except Exception as exc:
+                concave_hollow_cases[f"{thickness:.2f}"] = {
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        report["inter_tool"]["hollow_concave_dumbbell"] = concave_hollow_cases
         report["simplify"]["manifold_dumbbell"] = _manifold_simplify_probe(
             dumbbell,
             (0.0, 0.01, 0.05, 0.10, 0.25, 0.50, 1.0),

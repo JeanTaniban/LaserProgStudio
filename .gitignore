@@ -1,0 +1,51 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build / packaging outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Runtime diagnostics generated at execution time
+/diagnostics/*
+!/diagnostics/.gitkeep
+!/diagnostics/README.md
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test / benchmark scratch outputs
+.tox/
+.nox/

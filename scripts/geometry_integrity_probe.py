@@ -478,9 +478,8 @@ def _relief_probe() -> dict[str, Any]:
 
     try:
         from PIL import Image
-        report["tool_outputs"] = _tool_output_probe()
 
-    with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory() as td:
             image_path = Path(td) / "mask.png"
             image = Image.new("L", (12, 12), color=255)
             for x in range(2, 10):
@@ -720,6 +719,8 @@ def main() -> int:
         "relief": {},
         "tool_outputs": {},
     }
+
+    report["tool_outputs"] = _tool_output_probe()
 
     with tempfile.TemporaryDirectory() as td:
         inch_path = Path(td) / "unit_inch.3mf"

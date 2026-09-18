@@ -8,8 +8,14 @@ on:
 
 jobs:
   geometry-audit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONPATH: src
@@ -29,35 +35,20 @@ jobs:
 
       - name: Run targeted geometry regressions
         continue-on-error: true
-        run: |
-          python -m pytest -q \
-            tests/test_pass161_simplify_creator_api_migration.py \
-            tests/test_pass249_simplify_mesh_product_ui.py \
-            tests/test_pass250_hollow_mesh_product_ui.py \
-            tests/test_pass251_split_mesh_product_ui.py \
-            tests/test_vent_mesh_material_footprint_pass50.py \
-            tests/test_pass242_vent_generator_apply_preflight.py \
-            tests/test_v175_boolean_geometric_source_contract.py \
-            tests/test_v96_plan_tracer_boolean_manifold_fix.py \
-            tests/test_pass309_boolean_chained_plan_tracer_merge.py \
-            tests/test_pass327_folding_curve_deformation.py \
-            tests/test_pass82_acoustic_diffuser_tool.py
+        run: python -m pytest -q tests/test_pass161_simplify_creator_api_migration.py tests/test_pass249_simplify_mesh_product_ui.py tests/test_pass250_hollow_mesh_product_ui.py tests/test_pass251_split_mesh_product_ui.py tests/test_vent_mesh_material_footprint_pass50.py tests/test_pass242_vent_generator_apply_preflight.py tests/test_v175_boolean_geometric_source_contract.py tests/test_v96_plan_tracer_boolean_manifold_fix.py tests/test_pass309_boolean_chained_plan_tracer_merge.py tests/test_pass327_folding_curve_deformation.py tests/test_pass82_acoustic_diffuser_tool.py
 
       - name: Run geometry integrity runtime probe
         if: always()
-        run: |
-          python scripts/geometry_integrity_probe.py > geometry-integrity-probe.json
-          cat geometry-integrity-probe.json
+        run: python scripts/geometry_integrity_probe.py > geometry-integrity-probe.json
 
       - name: Upload probe
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: geometry-integrity-probe
+          name: geometry-integrity-probe-${{ runner.os }}
           path: geometry-integrity-probe.json
 
       - name: Run full project quality gate
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && matrix.os == 'ubuntu-latest'
         continue-on-error: true
-        run: |
-          python scripts/quality_gate.py --with-tests --pytest-args -q
+        run: python scripts/quality_gate.py --with-tests --pytest-args -q

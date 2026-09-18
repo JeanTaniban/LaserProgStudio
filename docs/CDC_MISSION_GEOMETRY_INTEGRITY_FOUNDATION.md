@@ -329,6 +329,55 @@ laserprog_studio.tool_api.geometry
 
 Un CreatorTool ne doit jamais importer directement le package interne de validation.
 
+### 8.4 GeometryMutationGateway — frontière unique d’écriture
+
+Le gate ne doit pas dépendre du bon comportement volontaire des outils.
+
+Créer un service d’écriture unique :
+
+```text
+GeometryMutationGateway
+    preview(change_set, contract)
+    commit(change_set, contract)
+    import_meshes(...)
+    replace(...)
+    add(...)
+    remove(...)
+```
+
+Le gateway est la seule couche runtime autorisée à transformer une sortie géométrique en état persistant du `ModelStore`.
+
+Chemin cible :
+
+```text
+Tool / Controller / Import
+        ↓
+GeometryChangeSet
+        ↓
+GeometryMutationGateway
+        ↓
+GeometryIntegrityService
+        ↓
+audit / certification / contract
+        ↓
+ModelStore
+```
+
+`ModelStore` reste volontairement un conteneur de données et d’historique. Il ne doit pas importer Manifold ni connaître les profils de fabrication.
+
+`OperationManager`, `DocumentFacade`, `PreviewSession`, les contrôleurs de transform et les workflows spécialisés délèguent leurs écritures au même gateway.
+
+Pendant la migration, les chemins legacy qui écrivent encore directement dans `ModelStore` sont :
+
+1. recensés par un audit statique ;
+2. journalisés comme bypass ;
+3. migrés progressivement ;
+4. finalement interdits par le quality gate.
+
+Les seules écritures directes tolérées à terme sont des chemins d’hydratation bas niveau explicitement approuvés, par exemple le chargement d’un fichier projet déjà sérialisé. Ces chemins doivent déclencher une qualification après hydratation avant tout usage Boolean/export.
+
+Cette architecture donne la garantie recherchée : ajouter un outil ne nécessite pas de connaître tous les anciens outils, et oublier un appel local de validation ne permet pas de contourner le contrat.
+
 ---
 
 ## 9. Intégration avec OperationManager et GeometryChangeSet
@@ -616,14 +665,16 @@ Ordre de migration recommandé :
 1. créer le package `geometry_contract` et sa suite de tests ;
 2. créer `GeometryIntegrityService` et `ctx.geometry` ;
 3. intégrer le contrat dans `OperationManager` ;
-4. intégrer le Solid Commit Gate dans PreviewSession/Document boundary ;
-5. migrer Boolean et Import ;
-6. migrer Simplify, Split, Hollow et Repair ;
-7. corriger Vent Generator ;
-8. corriger Lay Flat et Mechanical compound ;
-9. migrer Folding, Acoustic Diffuser et Relief ;
-10. harmoniser Plan Tracer, Joint Builder et Cloth avec le socle ;
-11. supprimer les validateurs génériques dupliqués devenus inutiles.
+4. créer `GeometryMutationGateway` et faire déléguer PreviewSession/DocumentFacade ;
+5. ajouter un audit des écritures directes `ModelStore` et migrer les contrôleurs legacy ;
+6. migrer Boolean et Import ;
+7. migrer Simplify, Split, Hollow et Repair ;
+8. corriger Vent Generator ;
+9. corriger Lay Flat et Mechanical compound ;
+10. migrer Folding, Acoustic Diffuser et Relief ;
+11. harmoniser Plan Tracer, Joint Builder et Cloth avec le socle ;
+12. supprimer les validateurs génériques dupliqués devenus inutiles ;
+13. rendre l’audit des bypass strict dans le quality gate.
 
 La migration doit rester progressive : un outil peut continuer à fonctionner pendant que les autres sont migrés.
 
@@ -983,6 +1034,7 @@ La mission est validée seulement si :
 - aucun outil migré ne recode son propre test de manifoldness générique ;
 - chaque sortie géométrique persistante possède un rôle explicite ou un rôle hérité de manière déterministe ;
 - les solides passent par le Solid Commit Gate ;
+- aucun Tool/Controller runtime ne peut écrire une nouvelle géométrie dans ModelStore en contournant GeometryMutationGateway ;
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;

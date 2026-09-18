@@ -738,7 +738,7 @@ La migration doit rester progressive : un outil peut continuer à fonctionner pe
 
 ---
 
-## 18. Cas actuellement identifiés à corriger
+## 19. Cas actuellement identifiés à corriger
 
 ### Simplify
 
@@ -819,7 +819,7 @@ Test mesuré : un 3MF déclaré `unit="inch"` contenant une géométrie de taill
 
 ---
 
-## 19. Tests du socle
+## 20. Tests du socle
 
 Le socle doit avoir sa propre suite de tests, indépendante des outils.
 
@@ -844,7 +844,7 @@ Elle doit couvrir au minimum :
 
 ---
 
-## 20. Tests inter-outils obligatoires
+## 21. Tests inter-outils obligatoires
 
 Ajouter des chaînes de non-régression :
 
@@ -863,7 +863,7 @@ L’objectif est de tester les contrats entre outils, sans rendre les outils dé
 
 ---
 
-## 21. Résultats d’audit runtime — 2026-09-18
+## 22. Résultats d’audit runtime — 2026-09-18
 
 Les mesures suivantes ont été exécutées sur GitHub Actions avec Python 3.12 et la dépendance `manifold3d` résolue en version 3.5.3.
 
@@ -1025,7 +1025,7 @@ Une grande partie des échecs concerne UI/architecture/Cloth/Plan Tracer et n’
 
 ---
 
-## 22. Autorités et niveaux de vérité
+## 23. Autorités et niveaux de vérité
 
 Le système ne doit plus avoir un booléen unique `is_valid`.
 
@@ -1048,7 +1048,7 @@ Exemples réels :
 
 ---
 
-## 23. Reproductibilité du kernel
+## 24. Reproductibilité du kernel
 
 La version de `manifold3d` ne doit plus rester non bornée.
 
@@ -1065,7 +1065,7 @@ Un certificat produit avec une version de kernel différente est requalifié par
 
 ---
 
-## 24. GeometryChangeSet et performance
+## 25. GeometryChangeSet et performance
 
 Le contrôle global doit être **central**, mais pas global en coût.
 
@@ -1084,7 +1084,7 @@ Le modèle cible évite ainsi qu’un outil local provoque un audit O(toute la s
 
 ---
 
-## 25. Pipeline Boolean cible
+## 26. Pipeline Boolean cible
 
 ```text
 source WorkMesh
@@ -1128,7 +1128,7 @@ Le PreparedSolid est éphémère et ne remplace pas le WorkMesh de l’utilisate
 
 ---
 
-## 26. Critères de validation
+## 27. Critères de validation
 
 La mission est validée seulement si :
 
@@ -1156,7 +1156,7 @@ La mission est validée seulement si :
 
 ---
 
-## 27. Risques de régression
+## 28. Risques de régression
 
 Les principaux risques sont :
 
@@ -1179,7 +1179,7 @@ Mesures prévues :
 
 ---
 
-## 28. Décision architecturale
+## 29. Décision architecturale
 
 La règle projet devient :
 

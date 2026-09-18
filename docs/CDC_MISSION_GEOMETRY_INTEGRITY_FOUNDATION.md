@@ -506,9 +506,13 @@ Les transformations affines peuvent conserver une information de topologie, mais
 
 ## 12. Réparation commune
 
-La réparation doit être centrale et déterministe.
+La réparation doit être centrale, déterministe et **sémantiquement conservatrice**.
 
 Elle ne s’exécute jamais implicitement pour masquer une erreur.
+
+Le test `Hollow → repair_work_mesh(optional_backends=False)` démontre un défaut critique actuel : le rapport de réparation indique 0 face supprimée, 0 sommet supprimé et un mesh fermé avant/après, mais le volume matière passe de ~`2568.51` à ~`13431.49 mm³`. La seule cause est la normalisation de winding par composante.
+
+Conséquence : une réparation ne peut jamais être déclarée « conservative » uniquement parce que le nombre de vertices/triangles est inchangé. Elle doit vérifier la sémantique volumique avant/après.
 
 `RepairPolicy` :
 
@@ -523,9 +527,19 @@ Le pipeline de réparation doit produire un diff mesurable :
 - composantes avant/après ;
 - volume avant/après ;
 - surface avant/après ;
-- codes des corrections appliquées.
+- codes des corrections appliquées ;
+- volume matériel signé avant/après ;
+- shells/régions/cavités avant/après ;
+- stratégie exacte de winding utilisée.
 
 Une réparation qui modifie fortement la forme doit échouer ou demander une action explicite, pas continuer silencieusement.
+
+Règles obligatoires :
+
+- si le mesh est déjà DIRECT_CERTIFIED, `RepairPolicy.CONSERVATIVE` ne change pas son winding ;
+- un flip d’orientation global peut être appliqué si l’objet entier est cohérent mais globalement inversé ;
+- l’orientation indépendante de chaque shell est interdite pour les solides pouvant contenir des cavités ;
+- une réparation dont le delta volumique dépasse la tolérance du profil est rejetée.
 
 ---
 
@@ -666,7 +680,43 @@ Cela permet :
 
 ---
 
-## 17. Migration des outils existants
+## 17. Priorités de correction issues des reproductions
+
+### P0 — corruption silencieuse de la matière
+
+À corriger avant d’élargir le socle à tous les outils :
+
+1. orientation multi-shell dans `boolean_ops._orient_triangles_for_manifold` ;
+2. réutilisation de cette orientation dans `mesh_repair` ;
+3. préparation Boolean des Hollow/cavités ;
+4. Lay Flat `repair_triangle_winding` sur les solides creux.
+
+Critère P0 : aucune opération qui reçoit un solide DIRECT_CERTIFIED ne peut changer son volume matériel uniquement pour « normaliser » les normales.
+
+### P1 — sorties faussement valides
+
+1. Simplify qui ouvre/déconnecte silencieusement une pièce ;
+2. Mechanical compound qui remplace un échec Boolean par une concaténation ;
+3. Lay Flat qui présente une concaténation chevauchante comme une fusion ;
+4. Vent qui stocke des anchors de mesure dans les vertices du solide.
+
+### P2 — interopérabilité / persistance
+
+1. conversion des unités 3MF ;
+2. transformations miroir 3MF et winding global ;
+3. suppression progressive des flags runtime `_lps_*` au profit des contrats persistants ;
+4. qualification après Save/Load/import.
+
+### P3 — durcissement
+
+1. fallback Split ouvert ;
+2. cas Hollow auto-intersectants ;
+3. corpus legacy réel ;
+4. performance et cache du GeometryChangeSet.
+
+---
+
+## 18. Migration des outils existants
 
 Ordre de migration recommandé :
 
@@ -720,14 +770,29 @@ Test mesuré : deux cubes de 20 mm se chevauchant de 10 mm sont concaténés en 
 
 ### Split
 
-- fallback pouvant produire des surfaces ouvertes.
+- fallback `clip()` pouvant produire des surfaces ouvertes si `clip_closed_surface()` échoue ;
+- aucune postcondition commune ne bloque encore automatiquement ce fallback.
+
+Tests mesurés positifs à conserver comme non-régression :
+
+- Hollow cube, coupe centrale : 2 solides fermés de ~`1284.255 mm³` chacun ;
+- Hollow cube, coupe oblique/off-center : ~`1407.149 + 1161.361 = 2568.510 mm³`, soit conservation du volume source.
+
+Le chemin normal de Split est donc sain sur ces cas ; le risque se concentre sur le fallback et les géométries pathologiques.
 
 ### Hollow
 
 - offset de normales pouvant s’auto-intersecter ;
 - absence de certification finale ;
 - la préparation Boolean actuelle inverse la sémantique de la coque de cavité ;
-- une différence avec un cutter entièrement situé dans le vide intérieur modifie pourtant la pièce et produit 4 shells, avec triangles dupliqués après soudure.
+- une différence avec un cutter entièrement situé dans le vide intérieur modifie pourtant la pièce et produit 4 shells, avec triangles dupliqués après soudure ;
+- le même défaut est reproduit sur une forme concave « haltère » : volume direct ~`2827.14 mm³`, préparation Boolean actuelle ~`29180.06 mm³`.
+
+### Repair Mesh
+
+- `repair_work_mesh()` réutilise actuellement le même helper d’orientation que Boolean ;
+- un Hollow parfaitement fermé et sans face dégénérée est transformé de ~`2568.51` à ~`13431.49 mm³` même avec `fill_holes=False`, `remove_tiny_faces=False` et backends optionnels désactivés ;
+- le rapport actuel ne détecte pas cette altération car il mesure essentiellement fermeture/compteurs, pas la sémantique volumique.
 
 ### Folding
 
@@ -892,9 +957,26 @@ Le Vent flared de test :
 
 Conclusion : les anchors de mesure doivent sortir du payload solide.
 
-### Split simple
+### Split
 
-Un cube coupé par le plan central produit deux morceaux fermés et Manifold-valides. Le cas simple est sain ; il reste à couvrir les fallbacks complexes où `clip_closed_surface()` échoue.
+Un cube plein coupé par le plan central produit deux morceaux fermés et Manifold-valides.
+
+Sur Hollow cube :
+
+- coupe centrale : `1284.254989 + 1284.254989 ≈ 2568.509979 mm³` ;
+- coupe oblique/off-center : `1407.149389 + 1161.360590 ≈ 2568.509979 mm³`.
+
+La conservation de volume est exacte à l’arrondi du probe. Le chemin `clip_closed_surface()` fonctionne donc correctement sur ces cas. Le fallback `clip()` reste non certifié.
+
+### Repair
+
+`repair_work_mesh()` sur le Hollow cube, avec tolérance `1e-6`, sans remplissage de trous, sans suppression de tiny faces et sans backends optionnels :
+
+- entrée : 16 vertices, 24 triangles, fermée, volume ~`2568.509979 mm³` ;
+- sortie : 16 vertices, 24 triangles, fermée, aucun élément supprimé ;
+- volume sortie : ~`13431.490021 mm³`.
+
+Le rapport de réparation actuel paraît donc « sans changement structurel » alors que la matière est profondément modifiée.
 
 ### Lay Flat
 

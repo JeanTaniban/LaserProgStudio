@@ -29,7 +29,7 @@ from laserprog_studio.planar_tools import VentFlareSide, VentPathDraft, VentSect
 from laserprog_studio.tooling.mechanical_motion.geometry import build_gear_mesh, merge_meshes
 from laserprog_studio.tooling.mechanical_motion.models import GearSpec
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
-from laserprog_studio.geometry_ops.image_mask_relief_builder import build_image_mask_relief
+from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
 
 
@@ -351,7 +351,7 @@ def _relief_probe() -> dict[str, Any]:
                     image.putpixel((x, y), 0 if (x + y) % 3 else 80)
             image.save(image_path)
             for binary in (False, True):
-                result = build_image_mask_relief(
+                result = build_mask_relief_mesh(
                     image_path,
                     max_height_mm=2.0,
                     pixel_size_mm=0.5,

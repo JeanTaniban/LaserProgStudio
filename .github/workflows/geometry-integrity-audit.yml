@@ -54,3 +54,9 @@ jobs:
         with:
           name: geometry-integrity-probe
           path: geometry-integrity-probe.json
+
+      - name: Run full project quality gate
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/quality_gate.py --with-tests --pytest-args -q

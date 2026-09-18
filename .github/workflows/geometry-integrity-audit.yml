@@ -1,0 +1,53 @@
+name: geometry-integrity-audit
+
+on:
+  push:
+    branches:
+      - leane/geometry-integrity-foundation-cdc
+  workflow_dispatch:
+
+jobs:
+  geometry-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pytest>=8"
+
+      - name: Run targeted geometry regressions
+        run: |
+          python -m pytest -q \
+            tests/test_pass161_simplify_creator_api_migration.py \
+            tests/test_pass249_simplify_mesh_product_ui.py \
+            tests/test_pass250_hollow_mesh_product_ui.py \
+            tests/test_pass251_split_mesh_product_ui.py \
+            tests/test_vent_mesh_material_footprint_pass50.py \
+            tests/test_pass242_vent_generator_apply_preflight.py \
+            tests/test_v175_boolean_geometric_source_contract.py \
+            tests/test_v96_plan_tracer_boolean_manifold_fix.py \
+            tests/test_pass309_boolean_chained_plan_tracer_merge.py \
+            tests/test_pass327_folding_curve_deformation.py \
+            tests/test_pass82_acoustic_diffuser_tool.py
+
+      - name: Run geometry integrity runtime probe
+        run: |
+          python scripts/geometry_integrity_probe.py | tee geometry-integrity-probe.json
+
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: geometry-integrity-probe
+          path: geometry-integrity-probe.json

@@ -584,6 +584,82 @@ Les seules écritures directes tolérées à terme sont des chemins d’hydratat
 
 Cette architecture donne la garantie recherchée : ajouter un outil ne nécessite pas de connaître tous les anciens outils, et oublier un appel local de validation ne permet pas de contourner le contrat.
 
+### 8.5 État réel des bypass — audit 2026-09-18
+
+L’audit AST dédié mesure actuellement :
+
+- **54** appels aux primitives de mutation `set_meshes/push_meshes/set_preview_meshes/commit_preview` ;
+- **50** appels runtime hors des chemins bas niveau explicitement autorisés ;
+- répartition des appels store : `application=15`, `tool_core=15`, `controllers=8`, `fabrication=6`, `tooling=6` ;
+- **39** affectations directes à `.vertices/.triangles` ;
+- **10** affectations persistantes à haut risque dans `application/controllers/tool_core` ;
+- 9 de ces 10 affectations à haut risque sont dans les transforms.
+
+Les écritures locales dans `geometry_ops`, Folding, Cloth picking, etc. restent légitimes lorsqu’elles construisent un **CandidateGeometry non persistant**.
+
+La distinction importante est donc :
+
+```text
+mutation d’un candidat local        → autorisée
+mutation d’un WorkMesh de scène     → interdite à terme hors gateway
+```
+
+### 8.6 Mutation persistante en place
+
+`ModelStore.meshes` et `committed_meshes` exposent aujourd’hui les objets WorkMesh réels. Un contrôleur peut donc faire :
+
+```python
+meshes[i].vertices = ...
+```
+
+sans appeler `set_meshes()`.
+
+Cela contourne :
+
+- le futur Solid Commit Gate ;
+- l’historique s’il n’est pas géré séparément ;
+- l’invalidation de certification ;
+- les notifications centralisées.
+
+Cible progressive :
+
+#### Phase 1 — protection par fingerprint
+
+Aucun certificat chargé depuis metadata n’est cru sans recalculer le fingerprint courant aux frontières sensibles :
+
+- Boolean ;
+- export ;
+- commit ;
+- Repair ;
+- analyses de fabrication.
+
+Une mutation clandestine ne peut donc pas conserver frauduleusement un ancien certificat.
+
+#### Phase 2 — migration des writers persistants
+
+Les controllers et services ne modifient plus `vertices/triangles` d’un mesh commité.
+
+Ils produisent un mesh candidat ou un `GeometryChangeSet.replace(mesh_id, candidate)`, puis passent par le gateway.
+
+Pour le Transform live :
+
+1. le drag travaille sur l’acteur de rendu / un buffer temporaire non certifié ;
+2. le WorkMesh commité reste intact pendant le mouvement ;
+3. au mouse release, un candidat est construit ;
+4. le gateway applique le contrat `AFFINE` ;
+5. réussite → replace + undo ;
+6. échec → l’acteur revient exactement au snapshot initial.
+
+#### Phase 3 — quality gate strict
+
+`scripts/audit_geometry_mutation_bypasses.py` devient bloquant :
+
+- allowlist bas niveau minimale ;
+- zéro appel runtime direct au store hors `GeometryMutationGateway` ;
+- zéro affectation persistante `.vertices/.triangles` dans controllers/application/tool_core.
+
+Une éventuelle future valeur `MeshGeometry` immuable peut renforcer encore cette règle, mais elle n’est **pas nécessaire comme première étape** et ne doit pas imposer une refonte massive des producteurs actuels.
+
 ---
 
 ## 9. Intégration avec OperationManager et GeometryChangeSet
@@ -996,15 +1072,17 @@ Ordre de migration recommandé :
 2. créer `GeometryIntegrityService` et `ctx.geometry` ;
 3. intégrer le contrat dans `OperationManager` ;
 4. créer `GeometryMutationGateway` et faire déléguer PreviewSession/DocumentFacade ;
-5. ajouter un audit des écritures directes `ModelStore` et migrer les contrôleurs legacy ;
-6. migrer Boolean et Import ;
-7. migrer Simplify, Split, Hollow et Repair ;
-8. corriger Vent Generator ;
-9. corriger Lay Flat et Mechanical compound ;
-10. migrer Folding, Acoustic Diffuser et Relief ;
-11. harmoniser Plan Tracer, Joint Builder et Cloth avec le socle ;
-12. supprimer les validateurs génériques dupliqués devenus inutiles ;
-13. rendre l’audit des bypass strict dans le quality gate.
+5. conserver l’audit des 54 écritures store et 39 mutations géométriques comme baseline ;
+6. migrer d’abord les 10 mutations persistantes en place, en particulier Transform ;
+7. migrer ensuite les 50 appels runtime store vers le gateway, par couche ;
+8. migrer Boolean et Import ;
+9. migrer Simplify, Split, Hollow et Repair ;
+10. corriger Vent Generator ;
+11. corriger Lay Flat et Mechanical compound ;
+12. migrer Folding, Acoustic Diffuser et Relief ;
+13. harmoniser Plan Tracer, Joint Builder et Cloth avec le socle ;
+14. supprimer les validateurs génériques dupliqués devenus inutiles ;
+15. rendre l’audit des bypass strict dans le quality gate.
 
 La migration doit rester progressive : un outil peut continuer à fonctionner pendant que les autres sont migrés.
 

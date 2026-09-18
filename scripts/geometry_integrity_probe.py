@@ -280,7 +280,8 @@ def _manifold_simplify_probe(mesh: Any, tolerances: tuple[float, ...]) -> dict[s
     return out
 
 
-def _write_probe_3mf(path: Path, *, unit: str = "millimeter") -> None:
+def _write_probe_3mf(path: Path, *, unit: str = "millimeter", item_transform: str | None = None) -> None:
+    transform_attr = f' transform="{item_transform}"' if item_transform else ""
     xml = f'''<?xml version="1.0" encoding="UTF-8"?>
 <model unit="{unit}" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
   <resources>
@@ -301,7 +302,7 @@ def _write_probe_3mf(path: Path, *, unit: str = "millimeter") -> None:
       </mesh>
     </object>
   </resources>
-  <build><item objectid="1"/></build>
+  <build><item objectid="1"{transform_attr}/></build>
 </model>'''
     content_types = '''<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -427,6 +428,26 @@ def main() -> int:
             "bounds": _mesh_bounds(imported[0]) if imported else None,
             "expected_extent_mm": 25.4,
         }
+
+        mirror_path = Path(td) / "mirror.3mf"
+        _write_probe_3mf(
+            mirror_path,
+            unit="millimeter",
+            item_transform="-1 0 0 0 1 0 0 0 1 0 0 0",
+        )
+        mirrored = read_3mf_meshes(mirror_path)
+        report["formats"]["3mf_mirrored_instance"] = (
+            audit_mesh(
+                WorkMesh(
+                    name=mirrored[0].name,
+                    vertices=list(mirrored[0].vertices),
+                    triangles=list(mirrored[0].triangles),
+                    color=mirrored[0].color,
+                )
+            )
+            if mirrored
+            else {"error": "no mesh"}
+        )
 
     report["relief"] = _relief_probe()
 

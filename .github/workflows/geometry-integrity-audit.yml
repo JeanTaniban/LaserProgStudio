@@ -41,6 +41,10 @@ jobs:
         if: always()
         run: python scripts/geometry_integrity_probe.py > geometry-integrity-probe.json
 
+      - name: Inventory geometry mutation bypasses
+        if: always()
+        run: python scripts/audit_geometry_mutation_bypasses.py > geometry-mutation-bypasses.txt
+
       - name: Upload audit evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,6 +53,7 @@ jobs:
           path: |
             geometry-integrity-probe.json
             targeted-geometry-tests.xml
+            geometry-mutation-bypasses.txt
 
       - name: Run full project quality gate
         if: github.event_name == 'workflow_dispatch' && matrix.os == 'ubuntu-latest'

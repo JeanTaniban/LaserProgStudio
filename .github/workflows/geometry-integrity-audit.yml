@@ -35,7 +35,7 @@ jobs:
 
       - name: Run targeted geometry regressions
         continue-on-error: true
-        run: python -m pytest -q --junitxml=targeted-geometry-tests.xml tests/test_pass161_simplify_creator_api_migration.py tests/test_pass249_simplify_mesh_product_ui.py tests/test_pass250_hollow_mesh_product_ui.py tests/test_pass251_split_mesh_product_ui.py tests/test_vent_mesh_material_footprint_pass50.py tests/test_pass242_vent_generator_apply_preflight.py tests/test_v175_boolean_geometric_source_contract.py tests/test_v96_plan_tracer_boolean_manifold_fix.py tests/test_pass309_boolean_chained_plan_tracer_merge.py tests/test_pass327_folding_curve_deformation.py tests/test_pass82_acoustic_diffuser_tool.py
+        run: python -m pytest -q --junitxml=targeted-geometry-tests.xml tests/test_pass161_simplify_creator_api_migration.py tests/test_pass249_simplify_mesh_product_ui.py tests/test_pass250_hollow_mesh_product_ui.py tests/test_pass251_split_mesh_product_ui.py tests/test_vent_mesh_material_footprint_pass50.py tests/test_pass242_vent_generator_apply_preflight.py tests/test_v174_joint_builder_boolean_topology_contract.py tests/test_v175_boolean_geometric_source_contract.py tests/test_v179_plan_tracer_performance_safety.py tests/test_v96_plan_tracer_boolean_manifold_fix.py tests/test_pass309_boolean_chained_plan_tracer_merge.py tests/test_pass327_folding_curve_deformation.py tests/test_pass82_acoustic_diffuser_tool.py
 
       - name: Run geometry integrity runtime probe
         if: always()

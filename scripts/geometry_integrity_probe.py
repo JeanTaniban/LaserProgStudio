@@ -287,6 +287,30 @@ def _dumbbell() -> WorkMesh:
     return boolean_union(boolean_union(left, bridge), right)
 
 
+def _full_boolean_input_probe(mesh: Any, label: str) -> dict[str, Any]:
+    try:
+        import manifold3d as m3d
+        from laserprog_studio.boolean_ops import _construct_valid_manifold
+
+        manifold_value, prepared, attempts = _construct_valid_manifold(
+            mesh,
+            label=label,
+            np=np,
+            m3d=m3d,
+        )
+        return {
+            "valid": bool(manifold_is_valid(manifold_value, m3d)),
+            "kernel": _manifold_metrics(manifold_value),
+            "prepared_mesh": audit_mesh(prepared),
+            "attempts": list(attempts),
+        }
+    except Exception as exc:
+        return {
+            "valid": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
 def _manifold_simplify_probe(mesh: Any, tolerances: tuple[float, ...]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     try:
@@ -1106,6 +1130,17 @@ def main() -> int:
     }
     for name, mesh in primitives.items():
         report["cases"][name] = audit_mesh(mesh)
+
+    report["inter_tool"]["external_seam_boolean_gateway"] = {
+        "exact": _full_boolean_input_probe(
+            primitives["seam_split_cube_exact"],
+            "seam_split_cube_exact",
+        ),
+        "near": _full_boolean_input_probe(
+            primitives["seam_split_cube_near"],
+            "seam_split_cube_near",
+        ),
+    }
 
     # Lay Flat grouping currently concatenates overlapping parts instead of performing
     # a volumetric union. Probe the semantic difference explicitly.

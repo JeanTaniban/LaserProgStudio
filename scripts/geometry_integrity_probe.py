@@ -43,6 +43,12 @@ from laserprog_studio.geometry_ops.extrude_down import extrude_mesh_down
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
 from laserprog_studio.io.project_file import save_project, load_project
 from laserprog_studio.project import ProjectStore
+from laserprog_studio.geometry_ops.planar_boolean_solid import extrude_planar_regions_boolean_ready
+from laserprog_studio.fabrication.box_generator import build_box_meshes
+from laserprog_studio.fabrication.joint_builder_core import apply_tab_slot_simple
+from laserprog_studio.tooling.cloth.models import ClothDocument
+from laserprog_studio.tooling.cloth.drawing import ClothDrawingController
+from laserprog_studio.tooling.cloth.output import build_cloth_apply_plan
 
 
 def _area2(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -472,7 +478,9 @@ def _relief_probe() -> dict[str, Any]:
 
     try:
         from PIL import Image
-        with tempfile.TemporaryDirectory() as td:
+        report["tool_outputs"] = _tool_output_probe()
+
+    with tempfile.TemporaryDirectory() as td:
             image_path = Path(td) / "mask.png"
             image = Image.new("L", (12, 12), color=255)
             for x in range(2, 10):
@@ -551,6 +559,126 @@ def _project_roundtrip_probe(mesh: Any) -> dict[str, Any]:
     return out
 
 
+def _tool_output_probe() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+
+    # Plan Tracer: a real planar solid with one inner opening.
+    try:
+        outer = ((0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0))
+        hole = ((15.0, 10.0), (25.0, 10.0), (25.0, 20.0), (15.0, 20.0))
+        plan_mesh, plan_report = extrude_planar_regions_boolean_ready(
+            [(outer, (hole,))],
+            plane=make_locked_plane("top"),
+            depth=3.0,
+        )
+        out["plan_tracer"] = {
+            "report": {
+                key: getattr(plan_report, key)
+                for key in (
+                    "backend",
+                    "boundary_edges",
+                    "nonmanifold_edges",
+                    "nonmanifold_vertices",
+                    "signed_volume",
+                )
+                if hasattr(plan_report, key)
+            },
+            "mesh": audit_mesh(plan_mesh),
+        }
+    except Exception as exc:
+        out["plan_tracer"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Box Generator: every board is a manufacturing solid, while the complete
+    # generated box remains a scene-level assembly rather than one pseudo-solid.
+    try:
+        boards, box_meshes, metrics = build_box_meshes(
+            100.0,
+            80.0,
+            60.0,
+            3.0,
+            group_id="geometry-audit-box",
+        )
+        out["box_generator"] = {
+            "board_count": len(box_meshes),
+            "inner_volume_mm3": float(metrics.inner_volume_mm3),
+            "boards": [audit_mesh(mesh) for mesh in box_meshes],
+        }
+    except Exception as exc:
+        out["box_generator"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Joint Builder: two perpendicular 3 mm boards touching on a 60 x 3 mm face.
+    try:
+        board_a = build_box(
+            _req(
+                "box",
+                size_x=60.0,
+                size_y=40.0,
+                size_z=3.0,
+                pos_x=0.0,
+                pos_y=0.0,
+                pos_z=1.5,
+            )
+        )
+        board_a.name = "joint_board_A"
+        board_b = build_box(
+            _req(
+                "box",
+                size_x=60.0,
+                size_y=3.0,
+                size_z=40.0,
+                pos_x=0.0,
+                pos_y=21.5,
+                pos_z=20.0,
+            )
+        )
+        board_b.name = "joint_board_B"
+        joint_result = apply_tab_slot_simple(
+            board_a,
+            board_b,
+            touch_tolerance=0.10,
+            clearance=0.15,
+            joint_size=8.0,
+            joint_count=2,
+            joint_edge_margin=2.0,
+            single_depth_probe=True,
+        )
+        male, female = joint_result[:2]
+        out["joint_builder"] = {
+            "source_a": audit_mesh(board_a),
+            "source_b": audit_mesh(board_b),
+            "male": audit_mesh(male),
+            "female": audit_mesh(female),
+        }
+    except Exception as exc:
+        out["joint_builder"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Cloth: folded output is a solid, flat output is intentionally a surface.
+    try:
+        document = ClothDocument()
+        drawing = ClothDrawingController(document)
+        created = drawing.create_surface_from_positions(
+            (
+                (0.0, 0.0, 0.0),
+                (30.0, 0.0, 0.0),
+                (30.0, 20.0, 0.0),
+                (0.0, 20.0, 0.0),
+            )
+        )
+        if not created.committed:
+            raise RuntimeError(f"Cloth rectangle was not committed: {created.message}")
+        plan = build_cloth_apply_plan(document, name="geometry-audit-cloth")
+        out["cloth"] = {
+            "ready": bool(plan.ready),
+            "issues": list(plan.issues),
+            "folded_solid": audit_mesh(plan.folded_mesh) if plan.folded_mesh is not None else None,
+            "flat_surface": audit_mesh(plan.flat_mesh) if plan.flat_mesh is not None else None,
+        }
+    except Exception as exc:
+        out["cloth"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    return out
+
+
 def main() -> int:
     def _pkg_version(name: str) -> str:
         try:
@@ -590,6 +718,7 @@ def main() -> int:
         "inter_tool": {},
         "formats": {},
         "relief": {},
+        "tool_outputs": {},
     }
 
     with tempfile.TemporaryDirectory() as td:

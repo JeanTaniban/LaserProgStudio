@@ -355,6 +355,28 @@ GeometryMutationGateway
 
 Le gateway est la seule couche runtime autorisée à transformer une sortie géométrique en état persistant du `ModelStore`.
 
+### Point d’insertion vérifié dans l’architecture actuelle
+
+Le chemin Creator existant est déjà favorable :
+
+```text
+CreatorTool
+→ OperationManager
+→ PreviewSession.show_meshes()
+→ DocumentFacade.set_preview_meshes()
+→ PreviewSession.apply()
+→ DocumentFacade.commit_preview()
+→ ModelStore
+```
+
+`OperationManager.apply()` délègue également à `DocumentFacade.set_meshes()`.
+
+Le premier raccord du gateway doit donc se faire **derrière DocumentFacade**, pas dans chaque CreatorTool. Cela donne immédiatement une couverture transversale aux outils Creator migrés.
+
+Le gateway ne remplace pas `DocumentFacade` dans l’API publique : `DocumentFacade` reste l’interface document des outils et délègue en interne les mutations géométriques au gateway.
+
+Les controllers legacy qui écrivent directement dans ModelStore restent une dette de migration séparée et doivent être recensés par un audit statique.
+
 Chemin cible :
 
 ```text
@@ -389,6 +411,26 @@ Cette architecture donne la garantie recherchée : ajouter un outil ne nécessit
 ---
 
 ## 9. Intégration avec OperationManager et GeometryChangeSet
+
+### Unifier le contrat de résultat avant d’ajouter le ChangeSet
+
+L’audit du code montre aujourd’hui deux types homonymes :
+
+- `tool_core.app_services.operations.OperationResult` : contrat Creator/public, avec `ok`, tuple de meshes, report, warnings, errors et metadata ;
+- `geometry_ops.result.OperationResult` : résultat interne des opérations géométriques, avec liste de meshes, warnings et errors.
+
+Les outils Creator actuels font explicitement l’adaptation entre les deux. Ce fonctionnement est valide mais le nom identique masque la frontière.
+
+La migration ne doit pas créer un troisième `OperationResult`.
+
+Cible :
+
+- le contrat public reste `tool_api.application.OperationResult` ;
+- le résultat interne de géométrie est renommé sémantiquement, par exemple `GeometryOpResult` ;
+- `GeometryChangeSet` devient un champ structuré du résultat public / de la transaction, pas un nouveau type concurrent de résultat ;
+- les adaptateurs Creator peuvent être supprimés progressivement lorsque les opérations internes publient directement leur ChangeSet.
+
+
 
 `OperationManager.register()` accepte un `geometry_contract`.
 
@@ -1320,6 +1362,8 @@ La mission est validée seulement si :
 - chaque sortie géométrique persistante possède un rôle explicite ou un rôle hérité de manière déterministe ;
 - les solides passent par le Solid Commit Gate ;
 - aucun Tool/Controller runtime ne peut écrire une nouvelle géométrie dans ModelStore en contournant GeometryMutationGateway ;
+- les outils Creator existants sont couverts sans appel de validation local grâce à l’intégration DocumentFacade/PreviewSession ;
+- les deux contrats OperationResult actuels sont désambiguïsés avant l’introduction définitive de GeometryChangeSet ;
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;

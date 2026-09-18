@@ -1,0 +1,25 @@
+{
+  "sparse": {
+    "source_vertices": 4,
+    "source_triangles": 2,
+    "result_vertices": 297,
+    "result_triangles": 548,
+    "height_levels": 21
+  },
+  "detail_max_pair_distance_error_mm": {
+    "uniform": 0.09998154719350272,
+    "preserve_structure": 8.881784197001252e-16
+  },
+  "grid_4000_triangles": {
+    "uniform": {
+      "seconds": 0.08733471999994435,
+      "vertices": 2777,
+      "triangles": 5280
+    },
+    "preserve_structure": {
+      "seconds": 0.13392922599996382,
+      "vertices": 2777,
+      "triangles": 5280
+    }
+  }
+}

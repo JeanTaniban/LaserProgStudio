@@ -1,0 +1,140 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+from .contracts import FixedPlanarView, LockedPlaneSpec, PlanarEditMode, PlanarToolConfig, PlanePoint, VentFlareSide, VentSectionKind, WorldPoint
+from .plan_trace_elements import PlanTraceAddKind, PlanTraceElement, normalize_add_kind, required_points_for_kind, sample_plan_trace_element
+from .plan_trace_snap import PlanTraceSnapHit, collect_plan_trace_snap_points, nearest_plan_trace_snap
+from .plan_trace_regions import PlanTraceRegion, plan_trace_closed_regions
+from .draft_model import PlanarPolygonDraft
+from .orientation import (
+    clamp_world_point_to_plane,
+    fixed_view_spec,
+    fixed_view_specs,
+    make_locked_plane,
+    nearest_locked_view_from_camera,
+    nearest_locked_view_from_forward,
+    plane_depth_for_world_point,
+    plane_from_first_hit,
+    plane_to_world,
+    world_to_plane,
+)
+from .vent_model import VentGeometryMetrics, VentPathDraft, VentSectionSpec
+from .vent_flare import effective_vent_flare_side, vent_flare_scale_at, vent_flare_transition_length
+from .vent_constraints import (
+    VentClearancePolicy,
+    VentClampResult,
+    clamp_vent_waypoint_candidate,
+    make_vent_clearance_policy,
+    segment_distance,
+    validate_vent_centerline_clearance,
+    validate_vent_waypoints_and_curve,
+    validate_vent_centerline_clearance_variable,
+)
+from .mesh_generation import (
+    make_extruded_polygon_mesh,
+    make_vent_path_mesh,
+    triangulate_polygon,
+)
+from .path_sampling import catmull_rom_point, polyline_length, smooth_path_points
+from .vent_path_geometry import sample_vent_centerline, validate_vent_bend_radius, vent_minimum_bend_radius
+from .polygon_constraints import (
+    PolygonClampResult,
+    clamp_polygon_point_candidate,
+    polygon_close_is_valid,
+    polygon_edit_is_valid,
+    validate_open_polygon_trace,
+    validate_polygon_edit_state,
+)
+from .validation import (
+    PlanarValidationResult,
+    dedupe_consecutive_points,
+    distance2d,
+    polygon_self_intersections,
+    validate_polygon_for_extrusion,
+    validate_vent_path,
+)
+from .pointer import (
+    CompiledPlanarSnapCache,
+    PlanarPointerResult,
+    PlanarRay,
+    intersect_ray_with_locked_plane,
+    compile_planar_snap_cache,
+    make_ray,
+    resolve_pointer_on_plane,
+    snap_plane_point,
+)
+
+__all__ = [
+    "FixedPlanarView",
+    "LockedPlaneSpec",
+    "PlanarEditMode",
+    "PlanarToolConfig",
+    "PlanePoint",
+    "WorldPoint",
+    "VentSectionKind",
+    "VentFlareSide",
+    "PlanTraceAddKind",
+    "PlanTraceElement",
+    "normalize_add_kind",
+    "required_points_for_kind",
+    "sample_plan_trace_element",
+    "PlanTraceSnapHit",
+    "collect_plan_trace_snap_points",
+    "nearest_plan_trace_snap",
+    "PlanTraceRegion",
+    "plan_trace_closed_regions",
+    "PlanarPolygonDraft",
+    "VentGeometryMetrics",
+    "VentPathDraft",
+    "VentSectionSpec",
+    "VentClearancePolicy",
+    "VentClampResult",
+    "clamp_vent_waypoint_candidate",
+    "make_vent_clearance_policy",
+    "segment_distance",
+    "validate_vent_centerline_clearance",
+    "validate_vent_waypoints_and_curve",
+    "validate_vent_centerline_clearance_variable",
+    "effective_vent_flare_side",
+    "vent_flare_scale_at",
+    "vent_flare_transition_length",
+    "CompiledPlanarSnapCache",
+    "PlanarPointerResult",
+    "PlanarRay",
+    "intersect_ray_with_locked_plane",
+    "compile_planar_snap_cache",
+    "make_ray",
+    "resolve_pointer_on_plane",
+    "snap_plane_point",
+    "clamp_world_point_to_plane",
+    "fixed_view_spec",
+    "fixed_view_specs",
+    "make_locked_plane",
+    "nearest_locked_view_from_camera",
+    "nearest_locked_view_from_forward",
+    "plane_depth_for_world_point",
+    "plane_from_first_hit",
+    "plane_to_world",
+    "world_to_plane",
+    "make_extruded_polygon_mesh",
+    "make_vent_path_mesh",
+    "smooth_path_points",
+    "sample_vent_centerline",
+    "validate_vent_bend_radius",
+    "vent_minimum_bend_radius",
+    "catmull_rom_point",
+    "polyline_length",
+    "triangulate_polygon",
+    "PolygonClampResult",
+    "clamp_polygon_point_candidate",
+    "polygon_close_is_valid",
+    "polygon_edit_is_valid",
+    "validate_open_polygon_trace",
+    "validate_polygon_edit_state",
+    "PlanarValidationResult",
+    "dedupe_consecutive_points",
+    "distance2d",
+    "polygon_self_intersections",
+    "validate_polygon_for_extrusion",
+    "validate_vent_path",
+]

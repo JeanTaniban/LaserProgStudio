@@ -1,0 +1,5 @@
+metric,scenario,baseline,optimized,unit,reduction_percent,measurement_type,notes
+projected_static_sync,"2042 projected primitives; 2000 unchanged sync calls; median of 3 runs",0.101040273,0.000882417,ms_per_call,99.1267,microbenchmark,"v37 scans the snapshot; v38 uses revision/visibility token and returns without primitive scan"
+motif_preview_to_apply,"20 selected adjacent faces; 154 union openings; median of 3 runs",66.154354,6.514528,ms,90.1525,microbenchmark,"optimized value reuses validated preview openings and per-face split"
+camera_pointer_work,"1000 pan/zoom/orbit move events",1000,1,cursor_snap_updates,99.9,structural_count,"v38 performs zero editing updates during navigation and one catch-up after release/debounce"
+motif_selected_face_coverage,"two Shift-selected adjacent faces",1,2,faces_processed,,functional,"v38 generates on the geometric union and redistributes crossing openings to both source faces"

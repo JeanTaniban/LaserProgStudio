@@ -1,0 +1,9 @@
+{
+  "touch_tolerance_mm": 0.5,
+  "clearance_mm": 0.15,
+  "joint_count": 3,
+  "debug_log": true,
+  "method": "tab_slot_simple",
+  "joint_size_mm": 10.0,
+  "joint_edge_margin_mm": 2.0
+}

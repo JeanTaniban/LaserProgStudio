@@ -1,0 +1,40 @@
+{
+  "next_id": 18,
+  "default_color": "#7FB3FF",
+  "default_pos": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "default_rot_deg": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "default_scale_mm": [
+    10.0,
+    10.0,
+    10.0
+  ],
+  "cubes": {
+    "16": {
+      "label": "Cube",
+      "pos": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "rot_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale_mm": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "color": "#7FB3FF"
+    }
+  }
+}

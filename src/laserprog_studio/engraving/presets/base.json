@@ -1,0 +1,16 @@
+{
+  "preset_type": "laser_3mf_gui_parameters",
+  "version": 1,
+  "name": "base",
+  "parameters": {
+    "dpi": 100,
+    "contour_width_mm": 0.12,
+    "contour_margin_mm": 0.0,
+    "fill_margin_mm": 0.0,
+    "fill_edge_width_mm": 0.02,
+    "normal_z_threshold": 0.5,
+    "page_margin_ratio": 0.08,
+    "label_font_size_px": 22,
+    "min_output_px": 700
+  }
+}

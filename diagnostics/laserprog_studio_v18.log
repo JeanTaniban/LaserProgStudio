@@ -1,0 +1,45 @@
+
+================================================================================================
+LASERPROG STUDIO V18
+================================================================================================
+Local date       : 2026-09-18T10:01:13
+Root              : C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety
+Toolbox dir       : C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety\src\laserprog_studio\fabrication
+Generator 2D dir  : C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety\src\laserprog_studio\engraving
+Log path          : C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety\diagnostics\laserprog_studio_v18.log
+Python executable : C:\Users\matth\AppData\Local\Programs\Python\Python312\python.exe
+Python version    : 3.12.9 (tags/v3.12.9:fdb8142, Feb  4 2025, 15:27:58) [MSC v.1942 64 bit (AMD64)]
+CWD               : C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety
+QT_OPENGL         : desktop
+
+================================================================================================
+IMPORTS / VERSIONS
+================================================================================================
+PySide6: OK version=6.8.3
+pyvista: OK version=0.46.5
+pyvistaqt: OK version=0.11.4
+vtk: OK version=9.4.2
+numpy: OK version=2.0.1
+shapely: OK version=2.1.2
+PIL: OK version=10.4.0
+pyvista theme before: smooth=False multi=8 backend=trame
+[UI] Appearance: force_dark_mode=True use_native_dialogs=True
+
+================================================================================================
+CREATE LASERPROG STUDIO V18
+================================================================================================
+[PYVISTA] Safe theme applied: smooth_shading=False, multi_samples=0, depth_peeling=False
+[UI] Menus created: File / Edit / Tools / Machine / View / Layouts / Preferences
+[VTK] RenderWindow MultiSamples=0
+[PYVISTA] Anti aliasing none ignore/non disponible
+[RENDER] Central render scheduler installed
+[UI] Studio V18 UI created
+[UI] Status bar created
+[APP] app.exec()
+[APP] Finished code=0
+
+================================================================================================
+RESULT
+================================================================================================
+Exit code: 0
+Share this log: C:\Users\matth\Documents\LaserProgStudio\LaserProg_PlanTracerPerformanceSafety\LaserProg_PlanTracerPerformanceSafety\diagnostics\laserprog_studio_v18.log

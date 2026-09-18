@@ -1,0 +1,14 @@
+{
+  "input_path": "C:\\Users\\dubos\\Downloads\\testphotophore.3mf",
+  "use_loaded_model": true,
+  "output_name": "layflat_parts",
+  "output_dir": "C:/Users/dubos/Documents/Creation/LaserProg/Documents",
+  "spacing_mm": 5.0,
+  "fusion_mode": "overlap",
+  "minimum_overlap_mm": 0.01,
+  "touch_tolerance_mm": 0.05,
+  "packing_constraint": "max_depth",
+  "max_length_mm": 300.0,
+  "max_depth_mm": 268.0,
+  "allow_xy_rotation": true
+}

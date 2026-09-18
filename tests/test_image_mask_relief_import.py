@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+from pathlib import Path
+import tempfile
+import unittest
+
+from PIL import Image, ImageDraw
+
+import _path_setup  # noqa: F401
+from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh, render_mask_preview_image
+from laserprog_studio.boolean_ops import is_closed_triangle_mesh
+
+
+class ImageMaskReliefImportTest(unittest.TestCase):
+    def test_grayscale_mask_maps_black_to_full_height_and_white_to_void(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "mask.png"
+            # top-left black, top-right 50%, bottom-left white, bottom-right dark gray
+            img = Image.new("L", (2, 2))
+            img.putdata([0, 128, 255, 64])
+            img.save(path)
+
+            result = build_mask_relief_mesh(path, max_height_mm=4.0, pixel_size_mm=2.0, max_grid_size=0)
+            zs = [round(v[2], 3) for v in result.mesh.vertices]
+            self.assertIn(4.0, zs)
+            self.assertTrue(any(1.9 <= z <= 2.1 for z in zs))
+            self.assertGreaterEqual(result.stats.active_pixels, 3)
+            self.assertEqual(result.stats.width, 2)
+            self.assertEqual(result.stats.height, 2)
+            self.assertGreater(len(result.mesh.triangles), 0)
+            self.assertEqual(is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles), (True, 0, 0))
+
+    def test_invert_swaps_black_and_white(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "mask.png"
+            img = Image.new("L", (2, 1))
+            img.putdata([0, 255])
+            img.save(path)
+
+            result = build_mask_relief_mesh(path, max_height_mm=3.0, pixel_size_mm=1.0, invert=True, max_grid_size=0)
+            xs_at_top = [round(v[0], 3) for v in result.mesh.vertices if abs(v[2] - 3.0) < 1e-6]
+            self.assertTrue(xs_at_top)
+            self.assertEqual(result.stats.active_pixels, 1)
+
+
+class ImageMaskReliefBinaryImportTest(unittest.TestCase):
+    def test_binary_mask_uses_full_height_or_void_only(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "mask.png"
+            img = Image.new("L", (4, 1))
+            # Normal mapping: black/dark enough are active; light pixels are void.
+            img.putdata([0, 126, 128, 255])
+            img.save(path)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=5.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                max_grid_size=0,
+            )
+            non_zero_z = sorted({round(v[2], 6) for v in result.mesh.vertices if v[2] > 0})
+            self.assertEqual(non_zero_z, [5.0])
+            self.assertEqual(result.stats.active_pixels, 2)
+            self.assertTrue(result.stats.binary)
+
+
+    def test_binary_threshold_is_user_controllable(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "mask.png"
+            img = Image.new("L", (4, 1))
+            # reliefs after normal mapping: 1.0, 0.75, 0.5, 0.25
+            img.putdata([0, 64, 128, 191])
+            img.save(path)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=3.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                binary_threshold=0.7,
+                max_grid_size=0,
+            )
+            self.assertEqual(result.stats.active_pixels, 2)
+            self.assertAlmostEqual(result.stats.binary_threshold, 0.7, places=6)
+            non_zero_z = sorted({round(v[2], 6) for v in result.mesh.vertices if v[2] > 0})
+            self.assertEqual(non_zero_z, [3.0])
+
+
+
+
+    def test_mask_preview_image_reflects_levels_and_invert(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "preview_mask.png"
+            img = Image.new("L", (8, 4), 255)
+            draw = ImageDraw.Draw(img)
+            draw.rectangle((0, 0, 2, 3), fill=0)
+            draw.rectangle((4, 0, 7, 3), fill=210)
+            img.save(path)
+
+            normal = render_mask_preview_image(path, levels=50, smooth=0, max_grid_size=0, max_preview_size=(8, 4))
+            inverted = render_mask_preview_image(path, invert=True, levels=50, smooth=0, max_grid_size=0, max_preview_size=(8, 4))
+
+            normal_pixels = list(normal.convert("L").getdata())
+            inverted_pixels = list(inverted.convert("L").getdata())
+            self.assertNotEqual(normal_pixels, inverted_pixels)
+            self.assertLess(min(normal_pixels), 80)
+            self.assertGreater(max(normal_pixels), 200)
+
+    def test_smart_levels_and_smooth_make_clean_binary_vector_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "ellipse_mask.png"
+            img = Image.new("RGBA", (96, 96), (255, 255, 255, 255))
+            draw = ImageDraw.Draw(img)
+            draw.ellipse((16, 12, 80, 84), fill=(0, 0, 0, 255))
+            img.save(path)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=45,
+                max_grid_size=0,
+            )
+
+            z_values = sorted({round(v[2], 6) for v in result.mesh.vertices})
+            self.assertEqual(z_values, [0.0, 10.0])
+            self.assertLess(result.stats.vertices, result.stats.active_pixels // 5)
+            self.assertEqual(is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles), (True, 0, 0))
+
+
+    def test_smooth_does_not_blur_or_drop_thin_mask_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "thin_stroke.png"
+            img = Image.new("L", (24, 12), 255)
+            draw = ImageDraw.Draw(img)
+            draw.line((2, 6, 21, 6), fill=0, width=1)
+            img.save(path)
+
+            raw = build_mask_relief_mesh(
+                path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=0,
+                max_grid_size=0,
+            )
+            smoothed = build_mask_relief_mesh(
+                path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=100,
+                max_grid_size=0,
+            )
+
+            self.assertEqual(raw.stats.active_pixels, 20)
+            self.assertEqual(smoothed.stats.active_pixels, raw.stats.active_pixels)
+            self.assertEqual(sorted({round(v[2], 6) for v in smoothed.mesh.vertices}), [0.0, 10.0])
+            self.assertEqual(is_closed_triangle_mesh(smoothed.mesh.vertices, smoothed.mesh.triangles), (True, 0, 0))
+
+    def test_smart_import_treats_transparent_background_as_empty_white(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "transparent_mask.png"
+            img = Image.new("RGBA", (20, 20), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle((5, 5, 14, 14), fill=(0, 0, 0, 255))
+            img.save(path)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=0,
+                max_grid_size=0,
+            )
+
+            self.assertEqual(result.stats.active_pixels, 100)
+            self.assertEqual(sorted({round(v[2], 6) for v in result.mesh.vertices}), [0.0, 10.0])
+
+    def test_binary_invert_applies_threshold_after_inversion(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "mask.png"
+            img = Image.new("L", (4, 1))
+            img.putdata([0, 126, 128, 255])
+            img.save(path)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=2.5,
+                pixel_size_mm=1.0,
+                invert=True,
+                binary=True,
+                max_grid_size=0,
+            )
+            non_zero_z = sorted({round(v[2], 6) for v in result.mesh.vertices if v[2] > 0})
+            self.assertEqual(non_zero_z, [2.5])
+            self.assertEqual(result.stats.active_pixels, 2)
+
+
+class ImageMaskReliefBooleanSafetyTest(unittest.TestCase):
+    def test_grayscale_mask_with_diagonal_and_hole_contacts_is_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "complex_mask.png"
+            img = Image.new("L", (6, 6))
+            img.putdata([
+                0, 255, 128, 255, 255, 64,
+                128, 0, 0, 128, 192, 255,
+                0, 128, 192, 128, 255, 64,
+                255, 192, 192, 255, 128, 0,
+                255, 0, 0, 192, 0, 255,
+                192, 128, 64, 128, 0, 64,
+            ])
+            img.save(path)
+
+            result = build_mask_relief_mesh(path, max_height_mm=10.0, pixel_size_mm=1.0, max_grid_size=0)
+
+            self.assertEqual(is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles), (True, 0, 0))
+
+    def test_binary_diagonal_pixels_do_not_share_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "diagonal_binary.png"
+            img = Image.new("L", (2, 2))
+            img.putdata([0, 255, 255, 0])
+            img.save(path)
+
+            result = build_mask_relief_mesh(path, max_height_mm=2.0, pixel_size_mm=1.0, binary=True, max_grid_size=0)
+
+            self.assertEqual(is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles), (True, 0, 0))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,67 @@
+{
+  "id": "workflow.active_tool_conflict.example",
+  "scope": "workflow.active_tool",
+  "priority": 40,
+  "dimming": {
+    "enabled": true,
+    "opacity": 0.42
+  },
+  "spotlights": [
+    {
+      "anchor_id": "tool.current.apply",
+      "padding": 7,
+      "allow_interaction": true
+    },
+    {
+      "anchor_id": "tool.current.cancel",
+      "padding": 7,
+      "allow_interaction": true
+    }
+  ],
+  "callouts": [
+    {
+      "anchor_id": "tool.current.apply",
+      "title": "Terminez l’outil actuel",
+      "body": "Appliquez ou annulez l’outil en cours avant d’en ouvrir un autre.",
+      "severity": "warning",
+      "placement": "top"
+    }
+  ],
+  "interaction_policy": {
+    "mode": "observe_and_warn",
+    "allowed_anchors": [
+      "tool.current.apply",
+      "tool.current.cancel"
+    ],
+    "invalid_click_message": "Appliquez ou annulez d’abord l’outil actuel."
+  },
+  "lifetime": {
+    "min_lifetime_ms": 500,
+    "max_lifetime_ms": 60000,
+    "anchor_wait_timeout_ms": 2500
+  },
+  "exit_conditions": [
+    {
+      "kind": "event",
+      "event_filter": {
+        "event_name": "tool.applied"
+      }
+    },
+    {
+      "kind": "event",
+      "event_filter": {
+        "event_name": "tool.cancelled"
+      }
+    },
+    {
+      "kind": "event",
+      "event_filter": {
+        "event_name": "tool.closed"
+      }
+    },
+    {
+      "kind": "escape"
+    }
+  ],
+  "exit_match_mode": "any"
+}

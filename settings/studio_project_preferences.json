@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "laser": {
+    "default_board_thickness_mm": 3.0,
+    "machine_area_x_mm": 358.0,
+    "machine_area_y_mm": 268.0,
+    "show_machine_area": true,
+    "primitive_board_x_mm": 200.0,
+    "primitive_board_y_mm": 100.0,
+    "boolean_subtract_margin_mm": 0.0,
+    "plan_tracer_pattern_max_segments": 120000
+  },
+  "shortcuts": {
+    "toolbar_modifier": "shift",
+    "transform_cycle_key": "tab",
+    "preview_apply_key": "left_alt",
+    "hold_threshold_s": 0.5,
+    "multi_press_window_s": 0.65
+  },
+  "autosave_enabled": true,
+  "autosave_interval_s": 10,
+  "default_floor_grid_step_mm": 10.0
+}

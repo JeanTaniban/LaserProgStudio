@@ -1,0 +1,5 @@
+case,viewport_height,world_point,vtk_display,qt_screen,test_point,v41_expected,v42_result,reason
+visible_handle,600,"(10,5,0)","(110,105,0.5)","(110,495)","(110,495)",hit,hit,"Correct Qt position"
+mirrored_false_positive,600,"(10,5,0)","(110,105,0.5)","(110,495)","(110,105)",hit_or_press_block,miss,"Old VTK-Y coordinate no longer accepted"
+far_away,600,"(10,5,0)","(110,105,0.5)","(110,495)","(10,10)",miss,miss,"Outside capture radius"
+edge_stretch_native_callback,600,n/a,n/a,n/a,n/a,incomplete,enabled,"Stretch handles included in native drag bootstrap"

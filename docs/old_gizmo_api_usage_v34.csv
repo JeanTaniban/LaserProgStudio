@@ -1,0 +1,245 @@
+﻿famille,methode,fichier,ligne,categorie,appel,remplacement_nouvelle_api,couverture
+gizmos,handles,application/_tool_core_diag_scene_painter.py,70,diagnostic/catalogue,handles = list(ctx.gizmos.handles(owner_tool=self.owner_tool)),snapshot.handles,couvert
+gizmos,handles,application/_tool_core_diag_scene_painter.py,595,diagnostic/catalogue,handles_by_id = None if callable(direct_handle) else {str(handle.id): handle for handle in ctx.gizmos.handles(owner_tool=self.owner_tool)},snapshot.handles,couvert
+gizmos,handles,application/creator_viewport_ui.py,238,infrastructure application,for handle in ctx.gizmos.handles(owner_tool=owner_tool):,snapshot.handles,couvert
+gizmos,handles,application/tool_core_diag/pointer_interaction.py,59,diagnostic/catalogue,"current_hover = next((h.id for h in self.runner.ctx.gizmos.handles(owner_tool=""tool_core_diag"") if h.hover), None)",snapshot.handles,couvert
+gizmos,handles,application/tool_core_diag/pointer_interaction.py,339,diagnostic/catalogue,"return any(str(handle.kind).startswith(""demo_"") for handle in self.runner.ctx.gizmos.handles(owner_tool=""tool_core_diag""))",snapshot.handles,couvert
+gizmos,handles,application/tool_core_diag/pointer_interaction.py,344,diagnostic/catalogue,"for handle in self.runner.ctx.gizmos.handles(owner_tool=""tool_core_diag"")",snapshot.handles,couvert
+gizmos,handles,application/tool_core_diag/pointer_interaction.py,361,diagnostic/catalogue,"for handle in self.runner.ctx.gizmos.handles(owner_tool=""tool_core_diag""):",snapshot.handles,couvert
+gizmos,set_minimal_dot_radii,application/tool_core_diag/view_settings.py,87,diagnostic/catalogue,self.runner.ctx.gizmos.set_minimal_dot_radii(,styles déclaratifs,couvert
+gizmos,update_style_metrics,application/tool_core_diag/view_settings.py,91,diagnostic/catalogue,changed = self.runner.ctx.gizmos.update_style_metrics(,styles déclaratifs,couvert
+gizmos,handles,controllers/interaction_gizmo_refresh.py,60,infrastructure application,has_ui = bool(ctx.gizmos.handles(owner_tool=active) or ctx.preview.items(owner_tool=active) or ctx.selection.actors(owner_tool=active)),snapshot.handles,couvert
+gizmos,create_handle,tool_api/_ui_motif_actor_rows.py,84,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_api/_ui_motif_actor_rows.py,116,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,handles,tool_api/_ui_motif_actor_rows.py,164,diagnostic/catalogue,"handle = direct_handle(handle_id, owner_tool=self.owner_tool) if callable(direct_handle) else next((h for h in self.ctx.gizmos.handles(owner_tool=self.owner_tool) if h.id == handle_id), None)",snapshot.handles,couvert
+gizmos,clear_tool,tool_api/_ui_motif_builder.py,96,diagnostic/catalogue,self.ctx.gizmos.clear_tool(owner),registry.clear,couvert
+gizmos,begin_interactive_update,tool_api/_ui_motif_builder.py,162,diagnostic/catalogue,self.ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,end_interactive_update,tool_api/_ui_motif_builder.py,167,diagnostic/catalogue,self.ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,clear_tool,tool_api/_ui_motif_builder.py,193,diagnostic/catalogue,self.ctx.gizmos.clear_tool(owner),registry.clear,couvert
+gizmos,handles,tool_api/_ui_motif_builder.py,211,diagnostic/catalogue,"handles=len(self.ctx.gizmos.handles(owner_tool=owner)),",snapshot.handles,couvert
+gizmos,handles,tool_api/_ui_motif_runtime.py,134,diagnostic/catalogue,"existing = direct_handle(actor.id, owner_tool=self.owner_tool) if callable(direct_handle) else next((handle for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool) if handle.id == actor.id), None)",snapshot.handles,couvert
+gizmos,update_positions_only,tool_api/_ui_motif_runtime.py,136,diagnostic/catalogue,self.ctx.gizmos.update_positions_only({actor.id: actor.points[0]}),registry.update_positions,couvert
+gizmos,create_handle,tool_api/_ui_motif_runtime.py,150,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,handles,tool_api/_ui_motif_runtime.py,175,diagnostic/catalogue,for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool):,snapshot.handles,couvert
+gizmos,create_handle,tool_api/_ui_motif_runtime.py,244,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,translate,tool_api/_ui_motif_showcase_rows.py,36,diagnostic/catalogue,"self.ctx.gizmos.translate(id=self._id(family, ""translate""), owner_tool=owner, origin=(0.0, y, 0.4), radius_px=13)",draw2d.translate_gizmo,couvert
+gizmos,rotate,tool_api/_ui_motif_showcase_rows.py,37,diagnostic/catalogue,"self.ctx.gizmos.rotate(id=self._id(family, ""rotate""), owner_tool=owner, origin=(22.0, y, 0.4), radius_px=13)",draw2d.rotate_gizmo,couvert
+gizmos,scale,tool_api/_ui_motif_showcase_rows.py,38,diagnostic/catalogue,"self.ctx.gizmos.scale(id=self._id(family, ""scale""), owner_tool=owner, origin=(44.0, y, 0.4), radius_px=13)",draw2d.scale_gizmo,couvert
+gizmos,plane,tool_api/_ui_motif_showcase_rows.py,39,diagnostic/catalogue,"self.ctx.gizmos.plane(id=self._id(family, ""plane""), owner_tool=owner, origin=(66.0, y, 0.4), normal=(0.0, 0.0, 1.0), radius_px=13)",draw2d.plane_gizmo,couvert
+gizmos,triad,tool_api/_ui_motif_showcase_rows.py,40,diagnostic/catalogue,"self.ctx.gizmos.triad(id=self._id(family, ""triad""), owner_tool=owner, origin=(88.0, y, 0.4), radius_px=12)",draw2d.triad_gizmo,couvert
+gizmos,box_bounds,tool_api/_ui_motif_showcase_rows.py,41,diagnostic/catalogue,"self.ctx.gizmos.box_bounds(id=self._id(family, ""box_bounds""), owner_tool=owner, bounds=(104.0, 118.0, y - 7.0, y + 7.0, -1.0, 1.0), radius_px=10)",draw2d.box_bounds_gizmo,couvert
+gizmos,begin_interactive_update,tool_api/_ui_motif_visibility.py,58,diagnostic/catalogue,ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,handles,tool_api/_ui_motif_visibility.py,60,diagnostic/catalogue,for handle in ctx.gizmos.handles(owner_tool=owner):,snapshot.handles,couvert
+gizmos,set_visible,tool_api/_ui_motif_visibility.py,67,diagnostic/catalogue,"ctx.gizmos.set_visible(handle.id, visible_bool)",registry.hide/show,couvert
+gizmos,end_interactive_update,tool_api/_ui_motif_visibility.py,69,diagnostic/catalogue,ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,begin_interactive_update,tool_api/diagnostic_lab.py,373,diagnostic/catalogue,self.ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,handles,tool_api/diagnostic_lab.py,377,diagnostic/catalogue,for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool):,snapshot.handles,couvert
+gizmos,set_visible,tool_api/diagnostic_lab.py,379,diagnostic/catalogue,"self.ctx.gizmos.set_visible(handle.id, False)",registry.hide/show,couvert
+gizmos,end_interactive_update,tool_api/diagnostic_lab.py,381,diagnostic/catalogue,self.ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,handles,tool_api/diagnostic_lab.py,504,diagnostic/catalogue,"handles=len(self.ctx.gizmos.handles(owner_tool=self.owner_tool)),",snapshot.handles,couvert
+gizmos,create_handle,tool_api/diagnostic_lab.py,611,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_api/diagnostic_lab.py,661,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,plane,tool_api/diagnostics.py,383,diagnostic/catalogue,"plane = ctx.gizmos.plane(id=""diag.plane"", owner_tool=owner, origin=(0, 0, 0), normal=(0, 0, 1))",draw2d.plane_gizmo,couvert
+gizmos,translate,tool_api/diagnostics.py,384,diagnostic/catalogue,"translate = ctx.gizmos.translate(id=""diag.move"", owner_tool=owner)",draw2d.translate_gizmo,couvert
+gizmos,rotate,tool_api/diagnostics.py,385,diagnostic/catalogue,"rotate = ctx.gizmos.rotate(id=""diag.rotate"", owner_tool=owner)",draw2d.rotate_gizmo,couvert
+gizmos,scale,tool_api/diagnostics.py,386,diagnostic/catalogue,"scale = ctx.gizmos.scale(id=""diag.scale"", owner_tool=owner)",draw2d.scale_gizmo,couvert
+gizmos,box_bounds,tool_api/diagnostics.py,387,diagnostic/catalogue,"box = ctx.gizmos.box_bounds(id=""diag.box"", owner_tool=owner, bounds=(0, 1, 0, 1, 0, 1))",draw2d.box_bounds_gizmo,couvert
+gizmos,handles,tool_api/diagnostics.py,389,diagnostic/catalogue,"return f""region_area={regions[0].area:g}, gizmo_handles={len(ctx.gizmos.handles(owner_tool=owner))}""",snapshot.handles,couvert
+gizmos,translate,tool_api/diagnostics.py,401,diagnostic/catalogue,"context.gizmos.translate(id=""life.move"", owner_tool=owner)",draw2d.translate_gizmo,couvert
+gizmos,handles,tool_api/diagnostics.py,409,diagnostic/catalogue,assert ctx.gizmos.handles(owner_tool=owner),snapshot.handles,couvert
+gizmos,handles,tool_api/diagnostics.py,415,diagnostic/catalogue,assert not ctx.gizmos.handles(owner_tool=owner),snapshot.handles,couvert
+gizmos,begin_interactive_update,tool_core/context.py,93,infrastructure Tool Core,self.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,end_interactive_update,tool_core/context.py,97,infrastructure Tool Core,self.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,clear_tool,tool_core/context.py,142,infrastructure Tool Core,self.gizmos.clear_tool(owner),registry.clear,couvert
+gizmos,create_handle,tool_core/diagnostic/bench.py,229,diagnostic/catalogue,"ctx.gizmos.create_handle(GizmoHandle(f""bench:{i}"", owner, (float(i), 0.0, 0.0), radius_px=14))",draw2d.handle / drag_arrow,couvert
+gizmos,begin_interactive_update,tool_core/diagnostic/bench.py,230,diagnostic/catalogue,ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,update_positions_only,tool_core/diagnostic/bench.py,234,diagnostic/catalogue,"ctx.gizmos.update_positions_only({f""bench:{index}"": (float(index), float(step % 11), 0.0)})",registry.update_positions,couvert
+gizmos,end_interactive_update,tool_core/diagnostic/bench.py,235,diagnostic/catalogue,ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,clear_tool,tool_core/diagnostic/gizmo_demo.py,62,diagnostic/catalogue,self.ctx.gizmos.clear_tool(self.owner_tool),registry.clear,couvert
+gizmos,begin_interactive_update,tool_core/diagnostic/gizmo_demo.py,102,diagnostic/catalogue,self.ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,update_positions_only,tool_core/diagnostic/gizmo_demo.py,104,diagnostic/catalogue,self.ctx.gizmos.update_positions_only({handle_id: tuple(float(v) for v in position)}),registry.update_positions,couvert
+gizmos,end_interactive_update,tool_core/diagnostic/gizmo_demo.py,108,diagnostic/catalogue,self.ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,handles,tool_core/diagnostic/gizmo_demo.py,115,diagnostic/catalogue,for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool):,snapshot.handles,couvert
+gizmos,create_handle,tool_core/diagnostic/gizmo_demo.py,200,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,radius_for_style,tool_core/diagnostic/gizmo_demo.py,205,diagnostic/catalogue,"radius_px=self.ctx.gizmos.radius_for_style(row.style_id, radius, state),",style ProjectedHandleStyle.size_px,couvert
+gizmos,update_interaction_state,tool_core/diagnostic/gizmo_demo.py,261,diagnostic/catalogue,self.ctx.gizmos.update_interaction_state(,manager.sync_interaction_state,couvert
+gizmos,handles,tool_core/diagnostic/gizmo_demo.py,269,diagnostic/catalogue,return {handle.id: handle for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool)},snapshot.handles,couvert
+gizmos,handles,tool_core/diagnostic/gizmo_demo.py,272,diagnostic/catalogue,"handles = [h for h in self.ctx.gizmos.handles(owner_tool=self.owner_tool) if str(h.kind).startswith(""demo_"")]",snapshot.handles,couvert
+gizmos,clear_tool,tool_core/diagnostic/gizmo_demo.py,320,diagnostic/catalogue,self.ctx.gizmos.clear_tool(self.owner_tool),registry.clear,couvert
+gizmos,clear_tool,tool_core/diagnostic/gizmo_demo.py,413,diagnostic/catalogue,self.ctx.gizmos.clear_tool(self.owner_tool),registry.clear,couvert
+gizmos,radius_for_style,tool_core/diagnostic/gizmo_demo.py,448,diagnostic/catalogue,"radius = self.ctx.gizmos.radius_for_style(style_id, 11, state)",style ProjectedHandleStyle.size_px,couvert
+gizmos,create_handle,tool_core/diagnostic/gizmo_demo.py,451,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_core/diagnostic/gizmo_demo.py,477,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_core/diagnostic/gizmo_demo.py,507,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,update_positions_only,tool_core/diagnostic/runner.py,42,diagnostic/catalogue,"ctx.gizmos.update_positions_only({""diag:hover"": event.world_pos})",registry.update_positions,couvert
+gizmos,create_handle,tool_core/diagnostic/runner.py,172,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_core/diagnostic/runner.py,181,diagnostic/catalogue,"self.ctx.gizmos.create_handle(GizmoHandle(""diag:hover"", self.owner_tool, (0.0, 0.0, 0.0), radius_px=20))",draw2d.handle / drag_arrow,couvert
+gizmos,handles,tool_core/diagnostic/runner.py,186,diagnostic/catalogue,if not self.ctx.gizmos.handles(owner_tool=self.owner_tool):,snapshot.handles,couvert
+gizmos,handles,tool_core/diagnostic/runner.py,188,diagnostic/catalogue,"if not any(handle.id == ""diag:hover"" for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool)):",snapshot.handles,couvert
+gizmos,create_handle,tool_core/diagnostic/runner.py,189,diagnostic/catalogue,"self.ctx.gizmos.create_handle(GizmoHandle(""diag:hover"", self.owner_tool, (0.0, 0.0, 0.0), radius_px=20))",draw2d.handle / drag_arrow,couvert
+gizmos,update_positions_only,tool_core/diagnostic/runner.py,193,diagnostic/catalogue,self.ctx.gizmos.update_positions_only(updates),registry.update_positions,couvert
+gizmos,handles,tool_core/diagnostic/runner.py,385,diagnostic/catalogue,"if not any(str(handle.kind).startswith(""demo_"") for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool)):",snapshot.handles,couvert
+gizmos,handles,tool_core/diagnostic/runner.py,393,diagnostic/catalogue,"if not any(str(handle.kind).startswith(""demo_"") for handle in self.ctx.gizmos.handles(owner_tool=self.owner_tool)):",snapshot.handles,couvert
+gizmos,handles,tool_core/diagnostic/runner.py,504,diagnostic/catalogue,"handles=len(self.ctx.gizmos.handles(owner_tool=self.owner_tool)),",snapshot.handles,couvert
+gizmos,clear_tool,tool_core/diagnostic/showcase.py,38,diagnostic/catalogue,self.ctx.gizmos.clear_tool(self.owner_tool),registry.clear,couvert
+gizmos,handles,tool_core/diagnostic/showcase.py,45,diagnostic/catalogue,backend.created = len(self.ctx.gizmos.handles(owner_tool=self.owner_tool)),snapshot.handles,couvert
+gizmos,create_handle,tool_core/diagnostic/showcase.py,79,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_core/diagnostic/showcase.py,134,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,create_handle,tool_core/diagnostic/showcase.py,163,diagnostic/catalogue,self.ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,begin_interactive_update,tool_core/diagnostic/showcase.py,173,diagnostic/catalogue,self.ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,update_positions_only,tool_core/diagnostic/showcase.py,176,diagnostic/catalogue,"self.ctx.gizmos.update_positions_only({f""diag:stress:{target}"": (float(target % 30) * 2.2, 68.0 + float(target // 30) * 2.2 + 0.35, 0.15)})",registry.update_positions,couvert
+gizmos,end_interactive_update,tool_core/diagnostic/showcase.py,178,diagnostic/catalogue,self.ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,handles,tool_core/diagnostic/showcase.py,195,diagnostic/catalogue,"handles=len(self.ctx.gizmos.handles(owner_tool=self.owner_tool)),",snapshot.handles,couvert
+gizmos,clear_tool,tool_core/tools.py,57,infrastructure Tool Core,ctx.gizmos.clear_tool(self.id),registry.clear,couvert
+gizmos,clear_tool,tooling/_texture_projection_projector.py,569,outil métier,ctx.gizmos.clear_tool(self.tool.id),registry.clear,couvert
+gizmos,begin_interactive_update,tooling/_texture_projection_projector.py,582,outil métier,ctx.gizmos.begin_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,create_handle,tooling/_texture_projection_projector.py,602,outil métier,ctx.gizmos.create_handle(,draw2d.handle / drag_arrow,couvert
+gizmos,radius_for_style,tooling/_texture_projection_projector.py,607,outil métier,"radius_px=ctx.gizmos.radius_for_style(style_id, _TEXTURE_HANDLE_BASE_RADIUS_PX, visual_state),",style ProjectedHandleStyle.size_px,couvert
+gizmos,handles,tooling/_texture_projection_projector.py,619,outil métier,for handle in ctx.gizmos.handles(owner_tool=self.tool.id):,snapshot.handles,couvert
+gizmos,set_visible,tooling/_texture_projection_projector.py,621,outil métier,"ctx.gizmos.set_visible(handle.id, False)",registry.hide/show,couvert
+gizmos,end_interactive_update,tooling/_texture_projection_projector.py,623,outil métier,ctx.gizmos.end_interactive_update(),update_many / update_positions (transaction unique),couvert
+gizmos,update_positions_only,tooling/_texture_projection_projector.py,1130,outil métier,ctx.gizmos.update_positions_only(positions),registry.update_positions,couvert
+gizmos,clear_tool,tooling/_texture_projection_projector.py,1236,outil métier,ctx.gizmos.clear_tool(self.tool.id),registry.clear,couvert
+gizmos,remove,tooling/plan_trace_2d/motif_overlay.py,1050,outil métier,gizmos.remove(handle_id),registry.remove,couvert
+gizmos,remove,tooling/plan_trace_2d/sketch_sync.py,379,outil métier,ctx.gizmos.remove(target_id),registry.remove,couvert
+gizmos,remove,tooling/vent_generator/feedback.py,289,outil métier,ctx.gizmos.remove(actor_id),registry.remove,couvert
+preview,items,application/_tool_core_diag_scene_painter.py,71,diagnostic/catalogue,previews = list(ctx.preview.items(owner_tool=self.owner_tool)),registry.items / snapshot,couvert
+preview,items,application/_tool_core_diag_scene_painter.py,623,diagnostic/catalogue,preview_items = {str(item.id): item for item in ctx.preview.items(owner_tool=self.owner_tool)},registry.items / snapshot,couvert
+preview,items,application/creator_viewport_ui.py,212,infrastructure application,for item in ctx.preview.items(owner_tool=owner_tool):,registry.items / snapshot,couvert
+preview,clear,application/preview_controller.py,130,infrastructure application,self.context.preview.clear(),manager.clear / registry.clear,couvert
+preview,clear,application/preview_controller.py,192,infrastructure application,self.context.preview.clear(),manager.clear / registry.clear,couvert
+preview,clear,application/preview_controller.py,216,infrastructure application,self.context.preview.clear(),manager.clear / registry.clear,couvert
+preview,clear_tool,application/transform_gizmo_api.py,217,infrastructure application,ctx.preview.clear_tool(OWNER_TOOL),registry.clear,couvert
+preview,show_line,application/transform_gizmo_api.py,239,infrastructure application,ctx.preview.show_line(,draw2d.line,couvert
+preview,clear_tool,application/transform_gizmo_api.py,330,infrastructure application,ctx.preview.clear_tool(OWNER_TOOL),registry.clear,couvert
+preview,show_polyline,application/transform_gizmo_api.py,346,infrastructure application,ctx.preview.show_polyline(,draw2d.polyline,couvert
+preview,show_text,application/transform_gizmo_api.py,361,infrastructure application,"ctx.preview.show_text(f""{ROTATE_MANIPULATOR_ID}:label:{axis}"", OWNER_TOOL, axis.upper(), (c[0] + vec[0] * l * 1.12, c[1] + vec[1] * l * 1.12, c[2] + vec[2] * l * 1.12), size_px=14)",draw2d.text,couvert
+preview,clear_tool,application/transform_gizmo_api.py,437,infrastructure application,ctx.preview.clear_tool(OWNER_TOOL),registry.clear,couvert
+preview,show_line,application/transform_gizmo_api.py,456,infrastructure application,ctx.preview.show_line(,draw2d.line,couvert
+preview,show_line,application/transform_gizmo_api.py,475,infrastructure application,ctx.preview.show_line(,draw2d.line,couvert
+preview,items,application/transform_gizmo_api.py,656,infrastructure application,"existing = next((item for item in ctx.preview.items(owner_tool=OWNER_TOOL) if item.id == item_id), None)",registry.items / snapshot,couvert
+preview,show_line,application/transform_gizmo_api.py,657,infrastructure application,"ctx.preview.show_line(item_id, OWNER_TOOL, p0, p1, payload=getattr(existing, ""payload"", None))",draw2d.line,couvert
+preview,items,application/transform_gizmo_api.py,661,infrastructure application,"existing = next((item for item in ctx.preview.items(owner_tool=OWNER_TOOL) if item.id == item_id), None)",registry.items / snapshot,couvert
+preview,show_polyline,application/transform_gizmo_api.py,662,infrastructure application,"ctx.preview.show_polyline(item_id, OWNER_TOOL, points, payload=getattr(existing, ""payload"", None))",draw2d.polyline,couvert
+preview,items,application/transform_gizmo_api.py,664,infrastructure application,existing_items = {str(item.id): item for item in ctx.preview.items(owner_tool=OWNER_TOOL)},registry.items / snapshot,couvert
+preview,show_line,application/transform_gizmo_api.py,667,infrastructure application,"ctx.preview.show_line(item_id, OWNER_TOOL, p0, p1, payload=getattr(existing_items.get(item_id), ""payload"", None))",draw2d.line,couvert
+preview,items,application/transform_gizmo_api.py,744,infrastructure application,existing_items = {str(item.id): item for item in ctx.preview.items(owner_tool=OWNER_TOOL)},registry.items / snapshot,couvert
+preview,show_line,application/transform_gizmo_api.py,749,infrastructure application,"ctx.preview.show_line(item_id, OWNER_TOOL, p0, p1, payload=payload)",draw2d.line,couvert
+preview,clear_tool,application/transform_gizmo_api.py,778,infrastructure application,ctx.preview.clear_tool(OWNER_TOOL),registry.clear,couvert
+preview,items,controllers/interaction_gizmo_refresh.py,60,infrastructure application,has_ui = bool(ctx.gizmos.handles(owner_tool=active) or ctx.preview.items(owner_tool=active) or ctx.selection.actors(owner_tool=active)),registry.items / snapshot,couvert
+preview,show_line,tool_api/_ui_motif_actor_rows.py,105,diagnostic/catalogue,"self.ctx.preview.show_line(pid, self.owner_tool, actor.points[0], actor.points[1], payload=visual.line_payload)",draw2d.line,couvert
+preview,show_circle,tool_api/_ui_motif_actor_rows.py,113,diagnostic/catalogue,"self.ctx.preview.show_circle(pid, self.owner_tool, points, payload=visual.line_payload)",draw2d.circle,couvert
+preview,show_circle,tool_api/_ui_motif_actor_rows.py,134,diagnostic/catalogue,"self.ctx.preview.show_circle(pid, self.owner_tool, tuple(actor.points), payload=visual.line_payload)",draw2d.circle,couvert
+preview,show_arc,tool_api/_ui_motif_actor_rows.py,139,diagnostic/catalogue,"self.ctx.preview.show_arc(pid, self.owner_tool, tuple(actor.points), payload=visual.line_payload)",draw2d.arc,couvert
+preview,show_face,tool_api/_ui_motif_actor_rows.py,150,diagnostic/catalogue,"self.ctx.preview.show_face(pid, self.owner_tool, tuple(actor.points), holes=holes, payload=payload)",draw2d.face (holes inclus),couvert
+preview,show_polyline,tool_api/_ui_motif_actor_rows.py,153,diagnostic/catalogue,"self.ctx.preview.show_polyline(outline_id, self.owner_tool, tuple(actor.points), payload=visual.line_payload)",draw2d.polyline,couvert
+preview,show_polyline,tool_api/_ui_motif_actor_rows.py,158,diagnostic/catalogue,"self.ctx.preview.show_polyline(pid, self.owner_tool, tuple(actor.points), payload=visual.line_payload)",draw2d.polyline,couvert
+preview,show_line,tool_api/_ui_motif_actor_rows.py,190,diagnostic/catalogue,"self.ctx.preview.show_line(pid, self.owner_tool, fixed_a, fixed_b)",draw2d.line,couvert
+preview,show_line,tool_api/_ui_motif_actor_rows.py,195,diagnostic/catalogue,"self.ctx.preview.show_line(pid, self.owner_tool, grab_a, grab_b)",draw2d.line,couvert
+preview,show_circle,tool_api/_ui_motif_actor_rows.py,203,diagnostic/catalogue,"self.ctx.preview.show_circle(circle_id, self.owner_tool, circle)",draw2d.circle,couvert
+preview,show_line,tool_api/_ui_motif_actor_rows.py,204,diagnostic/catalogue,"self.ctx.preview.show_line(radius_id, self.owner_tool, center, radius_pt)",draw2d.line,couvert
+preview,show_polyline,tool_api/_ui_motif_actor_rows.py,217,diagnostic/catalogue,"self.ctx.preview.show_polyline(pid, self.owner_tool, points, payload={""style_id"": ""guide""})",draw2d.polyline,couvert
+preview,clear_tool,tool_api/_ui_motif_builder.py,95,diagnostic/catalogue,self.ctx.preview.clear_tool(owner),registry.clear,couvert
+preview,clear_tool,tool_api/_ui_motif_builder.py,192,diagnostic/catalogue,self.ctx.preview.clear_tool(owner),registry.clear,couvert
+preview,items,tool_api/_ui_motif_builder.py,204,diagnostic/catalogue,previews = self.ctx.preview.items(owner_tool=owner),registry.items / snapshot,couvert
+preview,show_text,tool_api/_ui_motif_runtime.py,192,diagnostic/catalogue,"self.ctx.preview.show_text(self._id(family, ""label"", local_id), self.owner_tool, text, position, size_px=size_px)",draw2d.text,couvert
+preview,show_line,tool_api/_ui_motif_showcase_rows.py,50,diagnostic/catalogue,"self.ctx.preview.show_line(self._id(family, ""line""), self.owner_tool, (0.0, -2.0, z), (28.0, -2.0, z), payload={""style_id"": ""preview""})",draw2d.line,couvert
+preview,show_polyline,tool_api/_ui_motif_showcase_rows.py,51,diagnostic/catalogue,self.ctx.preview.show_polyline(,draw2d.polyline,couvert
+preview,show_circle,tool_api/_ui_motif_showcase_rows.py,60,diagnostic/catalogue,"self.ctx.preview.show_circle(self._id(family, ""circle""), self.owner_tool, circle, payload={""style_id"": ""preview""})",draw2d.circle,couvert
+preview,show_arc,tool_api/_ui_motif_showcase_rows.py,62,diagnostic/catalogue,"self.ctx.preview.show_arc(self._id(family, ""arc""), self.owner_tool, arc, payload={""style_id"": ""guide""})",draw2d.arc,couvert
+preview,show_face,tool_api/_ui_motif_showcase_rows.py,64,diagnostic/catalogue,"self.ctx.preview.show_face(self._id(family, ""face""), self.owner_tool, face)",draw2d.face (holes inclus),couvert
+preview,show_text,tool_api/_ui_motif_showcase_rows.py,65,diagnostic/catalogue,"self.ctx.preview.show_text(self._id(family, ""text"", ""face""), self.owner_tool, ""closed face preview"", (46.0, 22.0, 0.2), size_px=13)",draw2d.text,couvert
+preview,show_text,tool_api/_ui_motif_showcase_rows.py,73,diagnostic/catalogue,"self.ctx.preview.show_text(self._id(family, ""text"", idx), self.owner_tool, text, pos, size_px=size)",draw2d.text,couvert
+preview,show_polyline,tool_api/_ui_motif_showcase_rows.py,78,diagnostic/catalogue,"self.ctx.preview.show_polyline(self._id(family, ""snap"", ""guide""), self.owner_tool, guide_points, payload={""style_id"": ""guide""})",draw2d.polyline,couvert
+preview,show_text,tool_api/_ui_motif_showcase_rows.py,79,diagnostic/catalogue,"self.ctx.preview.show_text(self._id(family, ""text"", ""snap""), self.owner_tool, ""smart snap anchors"", (14.0, 44.0, 0.3), size_px=13)",draw2d.text,couvert
+preview,show_line,tool_api/_ui_motif_style_rows.py,115,diagnostic/catalogue,"self.ctx.preview.show_line(self._id(family, style_id, ""standalone_line""), self.owner_tool, (30.0, y, z), (43.0, y + 0.35 * idx, z))",draw2d.line,couvert
+preview,show_line,tool_api/_ui_motif_style_rows.py,117,diagnostic/catalogue,"self.ctx.preview.show_line(self._id(family, style_id, ""line_fixed""), self.owner_tool, points[""line_fixed_a""], points[""line_fixed_b""])",draw2d.line,couvert
+preview,show_line,tool_api/_ui_motif_style_rows.py,118,diagnostic/catalogue,"self.ctx.preview.show_line(self._id(family, style_id, ""line_grab""), self.owner_tool, points[""line_grab_a""], points[""line_grab_b""])",draw2d.line,couvert
+preview,show_circle,tool_api/_ui_motif_style_rows.py,122,diagnostic/catalogue,"self.ctx.preview.show_circle(self._id(family, style_id, ""circle""), self.owner_tool, circle)",draw2d.circle,couvert
+preview,show_line,tool_api/_ui_motif_style_rows.py,123,diagnostic/catalogue,"self.ctx.preview.show_line(self._id(family, style_id, ""circle_radius""), self.owner_tool, center, radius_pt)",draw2d.line,couvert
+preview,show_line,tool_api/_ui_motif_style_rows.py,134,diagnostic/catalogue,self.ctx.preview.show_line(,draw2d.line,couvert
+preview,items,tool_api/_ui_motif_visibility.py,70,diagnostic/catalogue,for item in ctx.preview.items(owner_tool=owner):,registry.items / snapshot,couvert
+preview,clear_tool,tool_api/diagnostic_lab.py,372,diagnostic/catalogue,self.ctx.preview.clear_tool(self.owner_tool),registry.clear,couvert
+preview,items,tool_api/diagnostic_lab.py,503,diagnostic/catalogue,"previews=len(self.ctx.preview.items(owner_tool=self.owner_tool)),",registry.items / snapshot,couvert
+preview,show_line,tool_api/diagnostic_lab.py,633,diagnostic/catalogue,"self.ctx.preview.show_line(actor.id, self.owner_tool, actor.points[0], actor.points[1], payload=self._line_payload(actor, selected, grabbed, hover))",draw2d.line,couvert
+preview,show_circle,tool_api/diagnostic_lab.py,639,diagnostic/catalogue,"self.ctx.preview.show_circle(actor.id, self.owner_tool, points, payload=self._line_payload(actor, selected, grabbed, hover))",draw2d.circle,couvert
+preview,show_arc,tool_api/diagnostic_lab.py,643,diagnostic/catalogue,"self.ctx.preview.show_arc(actor.id, self.owner_tool, tuple(actor.points), payload=self._line_payload(actor, selected, grabbed, hover))",draw2d.arc,couvert
+preview,show_polyline,tool_api/diagnostic_lab.py,646,diagnostic/catalogue,"self.ctx.preview.show_polyline(actor.id, self.owner_tool, tuple(actor.points), payload=self._line_payload(actor, selected, grabbed, hover))",draw2d.polyline,couvert
+preview,show_line,tool_api/diagnostics.py,400,diagnostic/catalogue,"context.preview.show_line(""life.preview"", owner, (0, 0, 0), (1, 0, 0))",draw2d.line,couvert
+preview,items,tool_api/diagnostics.py,408,diagnostic/catalogue,assert ctx.preview.items(owner_tool=owner),registry.items / snapshot,couvert
+preview,items,tool_api/diagnostics.py,414,diagnostic/catalogue,assert not ctx.preview.items(owner_tool=owner),registry.items / snapshot,couvert
+preview,show_line,tool_api/plan2d/actors.py,120,API Plan2D,"ctx.preview.show_line(line_id, owner_tool, _point3(start_world_pos), _point3(end_world_pos), payload={""style_id"": metadata[""line_style""]})",draw2d.line,couvert
+preview,show_circle,tool_api/plan2d/actors.py,194,API Plan2D,"ctx.preview.show_circle(circle_id, owner_tool, (*curve_points, curve_points[0]), payload={""style_id"": metadata[""line_style""]})",draw2d.circle,couvert
+preview,show_arc,tool_api/plan2d/actors.py,244,API Plan2D,"ctx.preview.show_arc(arc_id, owner_tool, curve_points, payload={""style_id"": metadata[""line_style""]})",draw2d.arc,couvert
+preview,show_face,tool_api/plan2d/actors.py,295,API Plan2D,"ctx.preview.show_face(face_id, owner_tool, points, holes=holes)",draw2d.face (holes inclus),couvert
+preview,show_face,tool_api/plan2d/actors.py,300,API Plan2D,"ctx.preview.show_face(face_id, owner_tool, points)",draw2d.face (holes inclus),couvert
+preview,show_line,tool_api/plan2d/actors.py,354,API Plan2D,"ctx.preview.show_line(dimension_id, owner_tool, p1, p2, payload={""style_id"": LineStyleId.CONSTRUCTION.value})",draw2d.line,couvert
+preview,show_line,tool_api/plan2d/actors.py,356,API Plan2D,"ctx.preview.show_line(f""{dimension_id}:witness:{index}"", owner_tool, _point3(w1), _point3(w2), payload={""style_id"": LineStyleId.GUIDE.value})",draw2d.line,couvert
+preview,show_text,tool_api/plan2d/actors.py,357,API Plan2D,"ctx.preview.show_text(f""{dimension_id}:label"", owner_tool, str(label), label_pos, size_px=13, anchor=""center"")",draw2d.text,couvert
+preview,clear_tool,tool_core/context.py,140,infrastructure Tool Core,self.preview.clear_tool(owner),registry.clear,couvert
+preview,clear_tool,tool_core/diagnostic/gizmo_demo.py,63,diagnostic/catalogue,self.ctx.preview.clear_tool(self.owner_tool),registry.clear,couvert
+preview,show_line,tool_core/diagnostic/gizmo_demo.py,226,diagnostic/catalogue,"self.ctx.preview.show_line(f""demo:{idx}:standalone_line"", self.owner_tool, (30.0, y, z), (43.0, y + 0.35 * idx, z))",draw2d.line,couvert
+preview,show_text,tool_core/diagnostic/gizmo_demo.py,227,diagnostic/catalogue,"self.ctx.preview.show_text(f""demo:{idx}:label:size"", self.owner_tool, row.label, (-10.0, y, z), size_px=12)",draw2d.text,couvert
+preview,show_line,tool_core/diagnostic/gizmo_demo.py,242,diagnostic/catalogue,"self.ctx.preview.show_line(f""demo:{idx}:line_fixed"", self.owner_tool, fixed_a, fixed_b)",draw2d.line,couvert
+preview,show_line,tool_core/diagnostic/gizmo_demo.py,246,diagnostic/catalogue,"self.ctx.preview.show_line(f""demo:{idx}:line_grab"", self.owner_tool, grab_a, grab_b)",draw2d.line,couvert
+preview,show_circle,tool_core/diagnostic/gizmo_demo.py,255,diagnostic/catalogue,"self.ctx.preview.show_circle(f""demo:{idx}:circle"", self.owner_tool, circle)",draw2d.circle,couvert
+preview,show_line,tool_core/diagnostic/gizmo_demo.py,256,diagnostic/catalogue,"self.ctx.preview.show_line(f""demo:{idx}:circle_radius"", self.owner_tool, center, radius_pt)",draw2d.line,couvert
+preview,items,tool_core/diagnostic/gizmo_demo.py,273,diagnostic/catalogue,"previews = [p for p in self.ctx.preview.items(owner_tool=self.owner_tool) if str(p.id).startswith(""demo:"")]",registry.items / snapshot,couvert
+preview,clear_tool,tool_core/diagnostic/gizmo_demo.py,321,diagnostic/catalogue,self.ctx.preview.clear_tool(self.owner_tool),registry.clear,couvert
+preview,clear_tool,tool_core/diagnostic/gizmo_demo.py,414,diagnostic/catalogue,self.ctx.preview.clear_tool(self.owner_tool),registry.clear,couvert
+preview,show_text,tool_core/diagnostic/gizmo_demo.py,418,diagnostic/catalogue,self.ctx.preview.show_text(,draw2d.text,couvert
+preview,show_line,tool_core/diagnostic/gizmo_demo.py,474,diagnostic/catalogue,"self.ctx.preview.show_line(actor.id, self.owner_tool, actor.points[0], actor.points[1], payload=payload)",draw2d.line,couvert
+preview,show_circle,tool_core/diagnostic/gizmo_demo.py,501,diagnostic/catalogue,self.ctx.preview.show_circle(,draw2d.circle,couvert
+preview,show_line,tool_core/diagnostic/runner.py,43,diagnostic/catalogue,"ctx.preview.show_line(""diag:hover-line"", ""tool_core_diag"", (0.0, 0.0, 0.0), event.world_pos)",draw2d.line,couvert
+preview,show_line,tool_core/diagnostic/runner.py,214,diagnostic/catalogue,"self.ctx.preview.show_line(""diag.snap-line"", self.owner_tool, (0.0, 0.0, 0.0), result.position)",draw2d.line,couvert
+preview,show_face,tool_core/diagnostic/runner.py,227,diagnostic/catalogue,"self.ctx.preview.show_face(""diag.face"", self.owner_tool, s.faces[faces[0]].polygon_points)",draw2d.face (holes inclus),couvert
+preview,show_line,tool_core/diagnostic/runner.py,347,diagnostic/catalogue,"self.ctx.preview.show_line(""creator.preview"", owner, (0.0, 0.0, 0.0), result.position)",draw2d.line,couvert
+preview,items,tool_core/diagnostic/runner.py,505,diagnostic/catalogue,"previews=len(self.ctx.preview.items(owner_tool=self.owner_tool)),",registry.items / snapshot,couvert
+preview,clear_tool,tool_core/diagnostic/showcase.py,48,diagnostic/catalogue,self.ctx.preview.clear_tool(self.owner_tool),registry.clear,couvert
+preview,show_text,tool_core/diagnostic/showcase.py,92,diagnostic/catalogue,self.ctx.preview.show_text(,draw2d.text,couvert
+preview,show_line,tool_core/diagnostic/showcase.py,103,diagnostic/catalogue,"self.ctx.preview.show_line(""diag:line"", self.owner_tool, (0.0, 10.0, 0.1), (28.0, 10.0, 0.1))",draw2d.line,couvert
+preview,show_polyline,tool_core/diagnostic/showcase.py,104,diagnostic/catalogue,self.ctx.preview.show_polyline(,draw2d.polyline,couvert
+preview,show_circle,tool_core/diagnostic/showcase.py,117,diagnostic/catalogue,"self.ctx.preview.show_circle(""diag:circle"", self.owner_tool, circle)",draw2d.circle,couvert
+preview,show_arc,tool_core/diagnostic/showcase.py,123,diagnostic/catalogue,"self.ctx.preview.show_arc(""diag:arc"", self.owner_tool, arc)",draw2d.arc,couvert
+preview,show_face,tool_core/diagnostic/showcase.py,127,diagnostic/catalogue,"self.ctx.preview.show_face(""diag:face"", self.owner_tool, face)",draw2d.face (holes inclus),couvert
+preview,show_text,tool_core/diagnostic/showcase.py,128,diagnostic/catalogue,"self.ctx.preview.show_text(""diag:text:face"", self.owner_tool, ""closed face preview"", (46.0, 30.0, 0.2), size_px=13)",draw2d.text,couvert
+preview,show_polyline,tool_core/diagnostic/showcase.py,144,diagnostic/catalogue,"self.ctx.preview.show_polyline(""diag:snap:guide"", self.owner_tool, guide_points)",draw2d.polyline,couvert
+preview,show_text,tool_core/diagnostic/showcase.py,145,diagnostic/catalogue,"self.ctx.preview.show_text(""diag:text:snap"", self.owner_tool, ""smart snap anchors"", (14.0, 38.0, 0.3), size_px=13)",draw2d.text,couvert
+preview,show_text,tool_core/diagnostic/showcase.py,156,diagnostic/catalogue,"self.ctx.preview.show_text(f""diag:text:{idx}"", self.owner_tool, text, pos, size_px=size)",draw2d.text,couvert
+preview,items,tool_core/diagnostic/showcase.py,192,diagnostic/catalogue,"labels = sum(1 for item in self.ctx.preview.items(owner_tool=self.owner_tool) if getattr(item.kind, ""value"", item.kind) == ""text"")",registry.items / snapshot,couvert
+preview,items,tool_core/diagnostic/showcase.py,196,diagnostic/catalogue,"previews=len(self.ctx.preview.items(owner_tool=self.owner_tool)),",registry.items / snapshot,couvert
+preview,clear_tool,tool_core/tools.py,56,infrastructure Tool Core,ctx.preview.clear_tool(self.id),registry.clear,couvert
+preview,show_polyline,tooling/_texture_projection_projector.py,532,outil métier,"ctx.preview.show_polyline(frame_id, owner, pts[""frame""], payload=line_payload)",draw2d.polyline,couvert
+preview,show_circle,tooling/_texture_projection_projector.py,533,outil métier,ctx.preview.show_circle(,draw2d.circle,couvert
+preview,show_line,tooling/_texture_projection_projector.py,539,outil métier,ctx.preview.show_line(,draw2d.line,couvert
+preview,show_line,tooling/_texture_projection_projector.py,546,outil métier,ctx.preview.show_line(,draw2d.line,couvert
+preview,show_text,tooling/_texture_projection_projector.py,553,outil métier,"ctx.preview.show_text(label_id, owner, ""Texture placement"", vadd(state[""origin""], vscale(state[""normal""], 0.6)), size_px=13, anchor=""bottom"")",draw2d.text,couvert
+preview,clear_tool,tooling/_texture_projection_projector.py,566,outil métier,ctx.preview.clear_tool(self.tool.id),registry.clear,couvert
+preview,clear_tool,tooling/_texture_projection_projector.py,1232,outil métier,ctx.preview.clear_tool(self.tool.id),registry.clear,couvert
+preview,items,tooling/plan_trace_2d/patterns.py,1075,outil métier,items = tuple(preview.items(owner_tool=self.id)),registry.items / snapshot,couvert
+preview,hide,tooling/plan_trace_2d/patterns.py,1081,outil métier,preview.hide(str(item.id)),registry.hide,couvert
+preview,show_line,tooling/plan_trace_2d/patterns.py,1103,outil métier,preview.show_line(,draw2d.line,couvert
+preview,clear_tool,tooling/plan_trace_2d/sketch_sync.py,118,outil métier,ctx.preview.clear_tool(self.id),registry.clear,couvert
+preview,hide,tooling/plan_trace_2d/sketch_sync.py,383,outil métier,ctx.preview.hide(target_id),registry.hide,couvert
+preview,items,tooling/plan_trace_2d/snap.py,321,outil métier,for item in ctx.preview.items(owner_tool=self.id):,registry.items / snapshot,couvert
+preview,show_mesh,tooling/plan_trace_2d/snap.py,344,outil métier,"ctx.preview.show_mesh(preview_id, self.id, preview_mesh)",draw2d.triangle_mesh,couvert
+preview,hide,tooling/plan_trace_2d/snap.py,350,outil métier,"ctx.preview.hide(""plan_trace_2d.editable_hover"")",registry.hide,couvert
+preview,show_line,tooling/plan_trace_2d/snap.py,899,outil métier,"ctx.preview.show_line(item_id, self.id, world(start_xy), world(end_xy), payload=line_payload or payload)",draw2d.line,couvert
+preview,show_polyline,tooling/plan_trace_2d/snap.py,909,outil métier,"ctx.preview.show_polyline(item_id, self.id, tuple(pts), payload=payload)",draw2d.polyline,couvert
+preview,show_circle,tooling/plan_trace_2d/snap.py,955,outil métier,"ctx.preview.show_circle(item_id, self.id, tuple(world(xy) for xy in pts_xy), payload=payload)",draw2d.circle,couvert
+preview,show_arc,tooling/plan_trace_2d/snap.py,969,outil métier,"ctx.preview.show_arc(item_id, self.id, tuple(world(xy) for xy in pts_xy), payload=payload)",draw2d.arc,couvert
+preview,show_arc,tooling/plan_trace_2d/snap.py,988,outil métier,"ctx.preview.show_arc(item_id, self.id, tuple(world(xy) for xy in pts_xy), payload=payload)",draw2d.arc,couvert
+preview,hide,tooling/plan_trace_2d/snap.py,1011,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,hide,tooling/plan_trace_2d/snap.py,1032,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,clear_tool,tooling/plan_trace_2d_tool.py,409,outil métier,ctx.preview.clear_tool(self.id),registry.clear,couvert
+preview,clear_tool,tooling/plan_trace_2d_tool.py,579,outil métier,ctx.preview.clear_tool(self.id),registry.clear,couvert
+preview,hide,tooling/vent_generator/feedback.py,296,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,items,tooling/vent_generator/feedback.py,316,outil métier,for item in tuple(ctx.preview.items(owner_tool=TOOL_VENT_GENERATOR)):,registry.items / snapshot,couvert
+preview,hide,tooling/vent_generator/feedback.py,322,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,hide,tooling/vent_generator/feedback.py,324,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,hide,tooling/vent_generator/feedback.py,326,outil métier,ctx.preview.hide(item_id),registry.hide,couvert
+preview,show_polyline,tooling/vent_generator/feedback.py,414,outil métier,ctx.preview.show_polyline(,draw2d.polyline,couvert
+preview,show_circle,tooling/vent_generator/feedback.py,464,outil métier,"ctx.preview.show_circle(legacy_id, TOOL_VENT_GENERATOR, (world,), payload={""role"": ""waypoint"", ""index"": index, ""visible"": False})",draw2d.circle,couvert
+preview,show_text,tooling/vent_generator/feedback.py,467,outil métier,"ctx.preview.show_text(label_id, TOOL_VENT_GENERATOR, """", world, size_px=1)",draw2d.text,couvert
+preview,show_text,tooling/vent_generator/feedback.py,478,outil métier,"ctx.preview.show_text(""vent.generator.preview.selection"", TOOL_VENT_GENERATOR, """", selected_world, size_px=1)",draw2d.text,couvert
+preview,show_line,tooling/vent_generator/feedback.py,496,outil métier,ctx.preview.show_line(,draw2d.line,couvert

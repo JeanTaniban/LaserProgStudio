@@ -1,0 +1,11 @@
+{
+  "outer_width_mm": 300.0,
+  "outer_depth_mm": 120.0,
+  "outer_height_mm": 120.0,
+  "wood_thickness_mm": 6.0,
+  "corner_joint": "front_back_wrap",
+  "top_front_joint": "top_bottom_wrap",
+  "top_side_joint": "top_bottom_wrap",
+  "output_name": "box",
+  "output_dir": "C:/Users/dubos/Documents/Creation/LaserProg/Documents"
+}

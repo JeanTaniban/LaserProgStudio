@@ -1,0 +1,9 @@
+item,v40,v41,result
+attach_to_mesh_checked,coverage decal overlay,"real mesh UV attachment, no decal actor",correct semantic separation
+attach_to_mesh_unchecked,decal overlay,decal overlay,"unchanged, expected visual decal"
+texture_handle_hit_radius_px,34/38 px,20/22 px,smaller 2D grab halo
+texture_empty_left_press,legacy Qt filter could consume left press,camera passthrough unless on TEX handle,pan/orbit can start
+short_left_release_on_face,placement tied to press path,release click still selects face after passthrough,click-to-place preserved
+coverage_outside_faces,texture/decal could overlay outside intended mode,outside faces sent to texture border on real mesh,Coverage respected
+texture_suite,not rerun here,"58 passed, 1 skipped",validated
+baseline_unrelated_failures,3/3 reproduced,same 3 failures in broader camera/selection subset,not introduced by v41

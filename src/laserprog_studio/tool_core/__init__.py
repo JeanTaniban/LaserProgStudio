@@ -1,0 +1,118 @@
+"""Shared GUI/viewport tool core.
+
+This package is intentionally independent from individual tools. Plan tracer,
+transform, extrusion and future tools can use these services instead of each
+owning separate UI/render/snap implementations.
+"""
+from .box_selection import BoxSelectionActivationModifier, BoxSelectionConfig, BoxSelectionInsidePolicy, BoxSelectionManager, BoxSelectionMode, BoxSelectionResult, BoxSelectionState, BoxSelectionTarget, ScreenRect
+from .commands import CommandStack, CompositeCommand, FunctionCommand
+from .context import ToolContext
+from .events import DragState, MouseButton, ToolEvent, ToolEventType, screen_distance
+from .input import EventRouter
+from .diagnostic import CoreDiagRunner, CoreDiagSnapshot
+from .inspector import InspectorManager, InspectorPanel, InspectorSection
+from .scene_cache import SceneBounds, SceneCache, SceneCacheSummary, ScenePoint, SceneSegment
+from .projected_drawing import (
+    ProjectedActorKind,
+    ProjectedDragConstraint,
+    ProjectedDrawingManager,
+    ProjectedDrawingRegistry,
+    ProjectedDrawingSnapshot,
+    ProjectedFace,
+    ProjectedFaceBatch,
+    ProjectedFaceStyle,
+    ProjectedHandle,
+    ProjectedHandleShape,
+    ProjectedHandleStyle,
+    ProjectedInteraction,
+    ProjectedLine,
+    ProjectedLineStyle,
+    ProjectedManipulator,
+    ProjectedPoint,
+    ProjectedPointCloud,
+    ProjectedPointStyle,
+    ProjectedPrimitiveKind,
+    ProjectedText,
+    ProjectedTextStyle,
+    ProjectedTriangleMesh,
+    ProjectedSegmentBatch,
+    ProjectedVisualState,
+)
+from .selection import ActorInteraction, ActorKind, Selectable, SelectionHit, SelectionInteractionState, SelectionManager, ToolActor
+from .style import DEFAULT_STYLE, ToolStyle
+from .tools import ToolBase, ToolModeBase, ToolRegistry
+from .workflow import ToolModeManager, ToolModeSpec, ToolModeState, ToolWorkflowManager, WorkflowState, WorkflowStep
+
+__all__ = [
+    "BoxSelectionActivationModifier",
+    "BoxSelectionConfig",
+    "BoxSelectionInsidePolicy",
+    "BoxSelectionManager",
+    "BoxSelectionMode",
+    "BoxSelectionResult",
+    "BoxSelectionState",
+    "BoxSelectionTarget",
+    "ScreenRect",
+    "CommandStack",
+    "CompositeCommand",
+    "DEFAULT_STYLE",
+    "CoreDiagRunner",
+    "CoreDiagSnapshot",
+    "DragState",
+    "EventRouter",
+    "FunctionCommand",
+    "MouseButton",
+    "InspectorManager",
+    "InspectorPanel",
+    "InspectorSection",
+    "ActorInteraction",
+    "ActorKind",
+    "Selectable",
+    "SelectionHit",
+    "SelectionInteractionState",
+    "SelectionManager",
+    "ToolActor",
+    "SceneBounds",
+    "SceneCache",
+    "SceneCacheSummary",
+    "ScenePoint",
+    "SceneSegment",
+    "ProjectedActorKind",
+    "ProjectedDragConstraint",
+    "ProjectedDrawingManager",
+    "ProjectedDrawingRegistry",
+    "ProjectedDrawingSnapshot",
+    "ProjectedFace",
+    "ProjectedFaceBatch",
+    "ProjectedFaceStyle",
+    "ProjectedHandle",
+    "ProjectedHandleShape",
+    "ProjectedHandleStyle",
+    "ProjectedInteraction",
+    "ProjectedLine",
+    "ProjectedLineStyle",
+    "ProjectedManipulator",
+    "ProjectedPoint",
+    "ProjectedPointCloud",
+    "ProjectedPointStyle",
+    "ProjectedPrimitiveKind",
+    "ProjectedText",
+    "ProjectedTextStyle",
+    "ProjectedTriangleMesh",
+    "ProjectedSegmentBatch",
+    "ProjectedVisualState",
+    "ToolBase",
+    "ToolContext",
+    "ToolEvent",
+    "ToolEventType",
+    "ToolModeBase",
+    "ToolRegistry",
+    "ToolModeManager",
+    "ToolModeSpec",
+    "ToolModeState",
+    "ToolWorkflowManager",
+    "WorkflowState",
+    "WorkflowStep",
+    "ToolStyle",
+    "screen_distance",
+]

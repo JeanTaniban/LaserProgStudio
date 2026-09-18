@@ -1,0 +1,51 @@
+from .diagnostics import OverlayDragDiagnostics, OverlayDragIssue, OverlayDragReport, OverlayDragSample
+from .manager import OverlayManager
+from .placement import OverlayRect, avoid_overlay_overlap, clamp_overlay_position
+from .qt_adapter import QtOverlayAdapter, sync_qt_overlay_windows
+from .specs import (
+    OverlayActionSpec,
+    OverlayButtonStyle,
+    OverlayFieldSpec,
+    OverlayModeSpec,
+    OverlayToolbarSectionSpec,
+    OverlayWindowSpec,
+    ToolButtonSpec,
+    ToolPanelSpec,
+    build_command_deck_window,
+    build_mode_toolbar_window,
+    build_sectioned_toolbar_window,
+    mode_badge_field,
+    command_deck_auto_width_px,
+    mode_toolbar_auto_width_px,
+    sectioned_toolbar_auto_width_px,
+    toolbar_button_slot_width_px,
+)
+
+__all__ = [
+    "QtOverlayAdapter",
+    "sync_qt_overlay_windows",
+    "OverlayDragDiagnostics",
+    "OverlayDragIssue",
+    "OverlayDragReport",
+    "OverlayDragSample",
+    "OverlayActionSpec",
+    "OverlayButtonStyle",
+    "OverlayFieldSpec",
+    "OverlayModeSpec",
+    "OverlayToolbarSectionSpec",
+    "OverlayManager",
+    "OverlayRect",
+    "avoid_overlay_overlap",
+    "clamp_overlay_position",
+    "OverlayWindowSpec",
+    "ToolButtonSpec",
+    "ToolPanelSpec",
+    "build_command_deck_window",
+    "build_mode_toolbar_window",
+    "build_sectioned_toolbar_window",
+    "mode_badge_field",
+    "command_deck_auto_width_px",
+    "mode_toolbar_auto_width_px",
+    "sectioned_toolbar_auto_width_px",
+    "toolbar_button_slot_width_px",
+]

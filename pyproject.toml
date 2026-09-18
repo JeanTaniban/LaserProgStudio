@@ -1,0 +1,40 @@
+[project]
+name = "laserprog-studio"
+version = "18.0.0"
+description = "3MF preparation tools for laser cutting and engraving."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[project.optional-dependencies]
+machine = [
+    "pyserial>=3.5",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+]
+build = [
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+laserprog-studio = "laserprog_studio.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"laserprog_studio" = [
+    "assets/*.ico",
+    "assets/*.png",
+    "assets/toolbar_icons/*.png",
+    "engraving/presets/*.json",
+    "fabrication/settings/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

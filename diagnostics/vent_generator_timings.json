@@ -1,0 +1,156 @@
+{
+  "counters": {
+    "scene_cache.mesh.collect_objects": {
+      "avg_ms": 0.007992000064405147,
+      "count": 1,
+      "last_ms": 0.007992000064405147,
+      "max_ms": 0.007992000064405147,
+      "min_ms": 0.007992000064405147,
+      "p50_ms": 0.007992000064405147,
+      "p95_ms": 0.007992000064405147,
+      "p99_ms": 0.007992000064405147,
+      "total_ms": 0.007992000064405147
+    },
+    "scene_cache.rebuild.collect_document_meshes": {
+      "avg_ms": 0.015331999748013914,
+      "count": 1,
+      "last_ms": 0.015331999748013914,
+      "max_ms": 0.015331999748013914,
+      "min_ms": 0.015331999748013914,
+      "p50_ms": 0.015331999748013914,
+      "p95_ms": 0.015331999748013914,
+      "p99_ms": 0.015331999748013914,
+      "total_ms": 0.015331999748013914
+    },
+    "scene_cache.rebuild.collect_scene": {
+      "avg_ms": 0.0002800002221192699,
+      "count": 1,
+      "last_ms": 0.0002800002221192699,
+      "max_ms": 0.0002800002221192699,
+      "min_ms": 0.0002800002221192699,
+      "p50_ms": 0.0002800002221192699,
+      "p95_ms": 0.0002800002221192699,
+      "p99_ms": 0.0002800002221192699,
+      "total_ms": 0.0002800002221192699
+    },
+    "scene_cache.rebuild.collect_selection": {
+      "avg_ms": 0.0008609999895270448,
+      "count": 1,
+      "last_ms": 0.0008609999895270448,
+      "max_ms": 0.0008609999895270448,
+      "min_ms": 0.0008609999895270448,
+      "p50_ms": 0.0008609999895270448,
+      "p95_ms": 0.0008609999895270448,
+      "p99_ms": 0.0008609999895270448,
+      "total_ms": 0.0008609999895270448
+    },
+    "scene_cache.rebuild.collect_sketch": {
+      "avg_ms": 0.0013519997992261779,
+      "count": 1,
+      "last_ms": 0.0013519997992261779,
+      "max_ms": 0.0013519997992261779,
+      "min_ms": 0.0013519997992261779,
+      "p50_ms": 0.0013519997992261779,
+      "p95_ms": 0.0013519997992261779,
+      "p99_ms": 0.0013519997992261779,
+      "total_ms": 0.0013519997992261779
+    },
+    "scene_cache.rebuild.total": {
+      "avg_ms": 0.045897999825683655,
+      "count": 1,
+      "last_ms": 0.045897999825683655,
+      "max_ms": 0.045897999825683655,
+      "min_ms": 0.045897999825683655,
+      "p50_ms": 0.045897999825683655,
+      "p95_ms": 0.045897999825683655,
+      "p99_ms": 0.045897999825683655,
+      "total_ms": 0.045897999825683655
+    },
+    "vent.feedback.snapshot.route_visuals": {
+      "avg_ms": 0.009304000286647351,
+      "count": 1,
+      "last_ms": 0.009304000286647351,
+      "max_ms": 0.009304000286647351,
+      "min_ms": 0.009304000286647351,
+      "p50_ms": 0.009304000286647351,
+      "p95_ms": 0.009304000286647351,
+      "p99_ms": 0.009304000286647351,
+      "total_ms": 0.009304000286647351
+    },
+    "vent.ui.refresh_state": {
+      "avg_ms": 0.0596290001340094,
+      "count": 1,
+      "last_ms": 0.0596290001340094,
+      "max_ms": 0.0596290001340094,
+      "min_ms": 0.0596290001340094,
+      "p50_ms": 0.0596290001340094,
+      "p95_ms": 0.0596290001340094,
+      "p99_ms": 0.0596290001340094,
+      "total_ms": 0.0596290001340094
+    },
+    "vent.ui.sync_report": {
+      "avg_ms": 0.11390000008759671,
+      "count": 1,
+      "last_ms": 0.11390000008759671,
+      "max_ms": 0.11390000008759671,
+      "min_ms": 0.11390000008759671,
+      "p50_ms": 0.11390000008759671,
+      "p95_ms": 0.11390000008759671,
+      "p99_ms": 0.11390000008759671,
+      "total_ms": 0.11390000008759671
+    },
+    "vent.ui.sync_view_feedback": {
+      "avg_ms": 0.08613800036982866,
+      "count": 1,
+      "last_ms": 0.08613800036982866,
+      "max_ms": 0.08613800036982866,
+      "min_ms": 0.08613800036982866,
+      "p50_ms": 0.08613800036982866,
+      "p95_ms": 0.08613800036982866,
+      "p99_ms": 0.08613800036982866,
+      "total_ms": 0.08613800036982866
+    }
+  },
+  "elapsed_session_s": 0.001,
+  "gauges": {
+    "scene_cache.bounds": 0,
+    "scene_cache.extra_targets": 0,
+    "scene_cache.mesh.objects": 0,
+    "scene_cache.points": 0,
+    "scene_cache.segments": 0,
+    "scene_cache.version": 1
+  },
+  "slow_events": [],
+  "values": {
+    "render.full": 1,
+    "scene_cache.rebuild.calls": 1,
+    "tool.cleanup": 1
+  },
+  "vent_generator": {
+    "exported_at": "2026-08-20T22:02:35",
+    "last_warning": "",
+    "mode": "ADD",
+    "pending_plane_point": null,
+    "plane_locked": true,
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "pointer_drag_active": false,
+    "pointer_drag_mode": null,
+    "python": "3.13.5",
+    "reason": "manual",
+    "scene_cache": {
+      "bounds": 0,
+      "extra_targets": 0,
+      "points": 0,
+      "scope": "snap",
+      "segments": 0,
+      "tool_points": 0,
+      "tool_segments": 0,
+      "ui_targets": 0,
+      "valid": true,
+      "version": 1
+    },
+    "segments": 0,
+    "selected_index": null,
+    "waypoints": 0
+  }
+}

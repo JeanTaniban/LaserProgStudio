@@ -1,0 +1,126 @@
+<mxGraphModel dx="1030" dy="562" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="n_window" value="window.py / bootstrap&lt;br&gt;QMainWindow bridges&lt;br&gt;render bridge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="40" y="40" width="180" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="n_runtime" value="runtime_state + AppContext&lt;br&gt;state object wiring" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="270" y="40" width="190" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="n_ui" value="ui/*&lt;br&gt;panels, toolbar, prefs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="40" y="160" width="180" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="n_controllers" value="controllers/*&lt;br&gt;Qt event facades&lt;br&gt;legacy extracted layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="270" y="160" width="190" height="78" as="geometry" />
+    </mxCell>
+    <mxCell id="n_application" value="application/*&lt;br&gt;controllers/services&lt;br&gt;render/backend adapters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="520" y="145" width="210" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="n_registry" value="tooling.registry&lt;br&gt;StudioTool + Creator adapters&lt;br&gt;17/17 migrated" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="790" y="40" width="210" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="n_tooling" value="tooling/*&lt;br&gt;built-in Creator tools&lt;br&gt;PlanTracer/Vent/Split etc." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="790" y="160" width="210" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="n_tool_api" value="tool_api/*&lt;br&gt;public Creator API&lt;br&gt;compat facades kept" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="1050" y="145" width="210" height="85" as="geometry" />
+    </mxCell>
+    <mxCell id="n_plan2d" value="tool_api.plan2d/*&lt;br&gt;owned Plan 2D domains&lt;br&gt;plane/snap/actors/dims/metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="1050" y="285" width="220" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="n_tool_core" value="tool_core/*&lt;br&gt;private API kernel&lt;br&gt;context, selection, snap, overlay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="790" y="310" width="220" height="92" as="geometry" />
+    </mxCell>
+    <mxCell id="n_projected_state" value="tool_core.projected_drawing&lt;br&gt;declarative state only&lt;br&gt;no application import" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="520" y="310" width="220" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="n_projected_renderer" value="application.projected_drawing_2d&lt;br&gt;Qt/VTK renderer backend&lt;br&gt;callback-bound" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="520" y="455" width="220" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="n_rendering" value="rendering/*&lt;br&gt;scene renderer&lt;br&gt;central render scheduler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="270" y="455" width="190" height="78" as="geometry" />
+    </mxCell>
+    <mxCell id="n_geometry" value="geometry_ops + fabrication&lt;br&gt;primitives + modifiers&lt;br&gt;pure mesh operations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="790" y="455" width="220" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="n_planar" value="planar_tools/*&lt;br&gt;locked planes, drafts, validation&lt;br&gt;Vent/PlanTracer kernels" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="1050" y="455" width="220" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="n_domain" value="domain + project + io&lt;br&gt;WorkMesh, scenes, 3MF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="40" y="455" width="180" height="78" as="geometry" />
+    </mxCell>
+    <mxCell id="n_audits" value="scripts/* audits&lt;br&gt;quality_gate OK&lt;br&gt;API boundary guard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="40" y="590" width="220" height="85" as="geometry" />
+    </mxCell>
+    <mxCell id="n_debt" value="Remaining cleanup debt&lt;br&gt;23 files &gt;800 lines&lt;br&gt;15 legacy wording hotspots&lt;br&gt;15 transition wording hotspots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#666666;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="520" y="590" width="290" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="e1" value="initializes" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_window" target="n_runtime">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e2" value="builds" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_window" target="n_ui">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e3" value="Qt bridges" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_window" target="n_controllers">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e4" value="creates controllers" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_runtime" target="n_application">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e5" value="delegates workflows" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_controllers" target="n_application">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e6" value="opens tools" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_application" target="n_registry">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e7" value="runtime instances" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_registry" target="n_tooling">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e8" value="uses public API" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_tooling" target="n_tool_api">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e9" value="facade over kernel" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_tool_api" target="n_tool_core">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e10" value="Plan2D tools use" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_tooling" target="n_plan2d">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e11" value="snap/sketch/dim kernel" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_plan2d" target="n_tool_core">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e12" value="locked-plane math" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_plan2d" target="n_planar">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e13" value="preview/apply ops" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_tooling" target="n_geometry">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e14" value="reads/writes WorkMesh" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_geometry" target="n_domain">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e15" value="renders scene" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_rendering" target="n_domain">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e16" value="schedules/render requests" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_application" target="n_rendering">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e17" value="owns registry" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_tool_core" target="n_projected_state">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e18" value="backend callback" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;dashed=1;" edge="1" parent="1" source="n_projected_state" target="n_projected_renderer">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e19" value="request render" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_projected_renderer" target="n_rendering">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e20" value="sync snapshot" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_projected_renderer" target="n_tool_core">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e21" value="reports next targets" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;dashed=1;" edge="1" parent="1" source="n_audits" target="n_debt">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e22" value="guards API boundaries" style="endArrow=block;html=1;rounded=1;strokeColor=#666666;fontSize=11;" edge="1" parent="1" source="n_audits" target="n_tool_api">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+  </root>
+</mxGraphModel>

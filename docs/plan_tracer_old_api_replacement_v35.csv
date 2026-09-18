@@ -1,0 +1,36 @@
+﻿source_file,source_line_v34,old_call,v35_replacement,status
+src/laserprog_studio/tool_api/plan2d/actors.py,76,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,118,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,120,ctx.preview.show_line,ProjectedLine,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,192,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,194,ctx.preview.show_circle,ProjectedLine (actor_kind=CIRCLE),replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,242,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,244,ctx.preview.show_arc,ProjectedLine (actor_kind=ARC),replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,293,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,295,ctx.preview.show_face,ProjectedFace (holes supported),replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,300,ctx.preview.show_face,ProjectedFace (holes supported),replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,352,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,354,ctx.preview.show_line,ProjectedLine,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,356,ctx.preview.show_line,ProjectedLine,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,357,ctx.preview.show_text,ProjectedText,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,416,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,439,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tool_api/plan2d/actors.py,483,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/motif_overlay.py,961,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/motif_overlay.py,1034,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/sketch_sync.py,89,ctx.actor_registry,ctx.projected_drawing.for_tool(...).add/update/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/sketch_sync.py,118,ctx.preview.clear_tool,ProjectedDrawingRegistry.clear,replaced
+src/laserprog_studio/tooling/plan_trace_2d/sketch_sync.py,379,ctx.gizmos.remove,ProjectedDrawingRegistry.remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/sketch_sync.py,383,ctx.preview.hide,ProjectedDrawingRegistry.hide/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,321,ctx.preview.items,ProjectedDrawingRegistry.get/snapshot,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,344,ctx.preview.show_mesh,ProjectedTriangleMesh,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,350,ctx.preview.hide,ProjectedDrawingRegistry.hide/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,899,ctx.preview.show_line,ProjectedLine,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,909,ctx.preview.show_polyline,ProjectedLine (polyline),replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,955,ctx.preview.show_circle,ProjectedLine (actor_kind=CIRCLE),replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,969,ctx.preview.show_arc,ProjectedLine (actor_kind=ARC),replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,988,ctx.preview.show_arc,ProjectedLine (actor_kind=ARC),replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,1011,ctx.preview.hide,ProjectedDrawingRegistry.hide/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d/snap.py,1032,ctx.preview.hide,ProjectedDrawingRegistry.hide/remove,replaced
+src/laserprog_studio/tooling/plan_trace_2d_tool.py,409,ctx.preview.clear_tool,ProjectedDrawingRegistry.clear,replaced
+src/laserprog_studio/tooling/plan_trace_2d_tool.py,579,ctx.preview.clear_tool,ProjectedDrawingRegistry.clear,replaced

@@ -1,0 +1,66 @@
+﻿famille,methode,fichier,ligne,appel
+actor_registry,add,tool_api/_ui_motif_runtime.py,50,"return self.ctx.actor_registry(self.owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/_ui_motif_runtime.py,50,"return self.ctx.actor_registry(self.owner_tool).add(actor, replace=True)"
+actor_registry,add,tool_api/_ui_motif_runtime.py,101,return self.ctx.actor_registry(self.owner_tool).add(
+actor_registry,actor_registry,tool_api/_ui_motif_runtime.py,101,return self.ctx.actor_registry(self.owner_tool).add(
+actor_registry,add,tool_api/_ui_motif_runtime.py,114,"return self.ctx.actor_registry(self.owner_tool).add(template, replace=True)"
+actor_registry,actor_registry,tool_api/_ui_motif_runtime.py,114,"return self.ctx.actor_registry(self.owner_tool).add(template, replace=True)"
+actor_registry,add,tool_api/_ui_motif_visibility.py,29,"ctx.actor_registry(actor.owner_tool).add(replace(actor, metadata=metadata), replace=True)"
+actor_registry,actor_registry,tool_api/_ui_motif_visibility.py,29,"ctx.actor_registry(actor.owner_tool).add(replace(actor, metadata=metadata), replace=True)"
+selection_low_level,register_actor,tool_api/actors.py,268,self._ctx.selection.register_actor(actor)
+selection_low_level,update_actor,tool_api/actors.py,279,if not self._ctx.selection.update_actor(actor):
+actor_registry,actor_registry,tool_api/diagnostic_lab.py,285,registry = self.ctx.actor_registry(self.owner_tool)
+actor_registry,actor_registry,tool_api/diagnostic_lab.py,291,registry = self.ctx.actor_registry(self.owner_tool)
+actor_registry,actor_registry,tool_api/diagnostic_lab.py,409,registry = self.ctx.actor_registry(self.owner_tool)
+actor_registry,actor_registry,tool_api/diagnostics.py,215,registry = ctx.actor_registry(owner)
+actor_registry,actor_registry,tool_api/diagnostics.py,246,registry = ctx.actor_registry(owner)
+actor_registry,add,tool_api/diagnostics.py,399,"context.actor_registry(owner).add(actors.point(""life.point"", (0, 0, 0), interaction=""grabbable""))"
+actor_registry,actor_registry,tool_api/diagnostics.py,399,"context.actor_registry(owner).add(actors.point(""life.point"", (0, 0, 0), interaction=""grabbable""))"
+actor_factory,point,tool_api/plan2d/actors.py,66,actor = actor_factory.point(
+actor_registry,add,tool_api/plan2d/actors.py,76,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,76,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,line,tool_api/plan2d/actors.py,108,actor = actor_factory.line(
+actor_registry,add,tool_api/plan2d/actors.py,118,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,118,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,polyline,tool_api/plan2d/actors.py,183,actor = actor_factory.polyline(
+actor_registry,add,tool_api/plan2d/actors.py,192,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,192,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,arc,tool_api/plan2d/actors.py,233,actor = actor_factory.arc(
+actor_registry,add,tool_api/plan2d/actors.py,242,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,242,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,polyline,tool_api/plan2d/actors.py,284,actor = actor_factory.polyline(
+actor_registry,add,tool_api/plan2d/actors.py,293,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,293,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,line,tool_api/plan2d/actors.py,342,actor = actor_factory.line(
+actor_registry,add,tool_api/plan2d/actors.py,352,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,352,"registered = ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,point,tool_api/plan2d/actors.py,399,actor = actor_factory.point(
+actor_registry,add,tool_api/plan2d/actors.py,416,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,416,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_factory,point,tool_api/plan2d/actors.py,429,actor = actor_factory.point(
+actor_registry,add,tool_api/plan2d/actors.py,439,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,439,"return ctx.actor_registry(owner_tool).add(actor, replace=True)"
+actor_registry,add,tool_api/plan2d/actors.py,483,"ctx.actor_registry(owner_tool).add(replace(actor, metadata=metadata), replace=True)"
+actor_registry,actor_registry,tool_api/plan2d/actors.py,483,"ctx.actor_registry(owner_tool).add(replace(actor, metadata=metadata), replace=True)"
+selection_low_level,register_actor,tool_core/diagnostic/gizmo_demo.py,391,self.ctx.selection.register_actor(actor)
+actor_factory,point,tool_core/diagnostic/runner.py,333,"self.ctx.selection.register_actor(actors.point(""creator.p1"", (0.0, 0.0, 0.0), owner_tool=owner, interaction=""grabbable""))"
+selection_low_level,register_actor,tool_core/diagnostic/runner.py,333,"self.ctx.selection.register_actor(actors.point(""creator.p1"", (0.0, 0.0, 0.0), owner_tool=owner, interaction=""grabbable""))"
+actor_factory,point,tool_core/diagnostic/runner.py,334,"self.ctx.selection.register_actor(actors.point(""creator.p2"", (length, 0.0, 0.0), owner_tool=owner, interaction=""grabbable""))"
+selection_low_level,register_actor,tool_core/diagnostic/runner.py,334,"self.ctx.selection.register_actor(actors.point(""creator.p2"", (length, 0.0, 0.0), owner_tool=owner, interaction=""grabbable""))"
+actor_factory,line,tool_core/diagnostic/runner.py,335,"self.ctx.selection.register_actor(actors.line(""creator.edge"", (0.0, 0.0, 0.0), (length, 0.0, 0.0), owner_tool=owner, interaction=""selectable""))"
+selection_low_level,register_actor,tool_core/diagnostic/runner.py,335,"self.ctx.selection.register_actor(actors.line(""creator.edge"", (0.0, 0.0, 0.0), (length, 0.0, 0.0), owner_tool=owner, interaction=""selectable""))"
+actor_registry,actor_registry,tooling/_texture_projection_projector.py,567,registry = ctx.actor_registry(self.tool.id)
+actor_factory,point,tooling/_texture_projection_projector.py,591,actors.point(
+actor_registry,actor_registry,tooling/_texture_projection_projector.py,1120,registry = ctx.actor_registry(self.tool.id)
+actor_registry,clear,tooling/_texture_projection_projector.py,1240,ctx.actor_registry(self.tool.id).clear()
+actor_registry,actor_registry,tooling/_texture_projection_projector.py,1240,ctx.actor_registry(self.tool.id).clear()
+actor_registry,actor_registry,tooling/creator_runtime.py,45,return ctx.actor_registry(self.owner_id)
+actor_factory,point,tooling/plan_trace_2d/motif_overlay.py,951,actor = actor_factory.point(
+actor_registry,add,tooling/plan_trace_2d/motif_overlay.py,961,"ctx.actor_registry(self.id).add(actor, replace=True)"
+actor_registry,actor_registry,tooling/plan_trace_2d/motif_overlay.py,961,"ctx.actor_registry(self.id).add(actor, replace=True)"
+selection_low_level,register_actor,tooling/plan_trace_2d/motif_overlay.py,964,ctx.selection.register_actor(
+actor_registry,add,tooling/plan_trace_2d/motif_overlay.py,1034,"ctx.actor_registry(self.id).add(replace(actor, points=(tuple(float(v) for v in position),)), replace=True)"
+actor_registry,actor_registry,tooling/plan_trace_2d/motif_overlay.py,1034,"ctx.actor_registry(self.id).add(replace(actor, points=(tuple(float(v) for v in position),)), replace=True)"
+actor_registry,actor_registry,tooling/plan_trace_2d/sketch_sync.py,89,registry = ctx.actor_registry(self.id)
+actor_registry,actor_registry,tooling/vent_generator/feedback.py,276,registry = ctx.actor_registry(TOOL_VENT_GENERATOR)
+actor_registry,actor_registry,tooling/vent_generator/feedback.py,306,registry = ctx.actor_registry(TOOL_VENT_GENERATOR)

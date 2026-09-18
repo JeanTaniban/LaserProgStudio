@@ -1,0 +1,331 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "acoustic_diffuser": {
+      "outer_diameter_mm": 160.0,
+      "resolution": "high",
+      "skirt_thickness_mm": 30.5,
+      "speaker_diameter_mm": 80.0,
+      "target_frequency_hz": 1000.0,
+      "vent_count": 7,
+      "vent_size_mm": 10.0,
+      "vent_style": "none"
+    },
+    "audit_broken_change": {
+      "amount": 2.0
+    },
+    "box": {
+      "corner_joint": "front_back_wrap",
+      "depth": 80.0,
+      "height": 40.0,
+      "thickness": 2.5,
+      "top_front_joint": "top_bottom_wrap",
+      "top_side_joint": "top_bottom_wrap",
+      "width": 180.0
+    },
+    "cloth": {
+      "cloth_construction_snap": true,
+      "cloth_layer_thickness": 0.2,
+      "cloth_name": "Cloth",
+      "cloth_patch_layer": "layer1",
+      "cloth_patch_material": "Textile",
+      "cloth_patch_name": "Panel 1",
+      "cloth_smart_snap": true,
+      "cloth_snap_tolerance": 12.0,
+      "cloth_stitch_tolerance": 0.05,
+      "cloth_surface_auto": true,
+      "cloth_surface_continuity": 0.35,
+      "cloth_thickness": 0.2
+    },
+    "engraving": {
+      "role": "fill"
+    },
+    "example.minimal_point_line": {
+      "length": 80.0,
+      "snap": true
+    },
+    "folding": {
+      "folding_angle": 60.0,
+      "folding_deformation_mode": "preserve_structure",
+      "folding_fixed_side": "start",
+      "folding_profile_detail": "3"
+    },
+    "gizmo_catalog": {
+      "catalog_test": "overview",
+      "show_projected_drawing_2d": true
+    },
+    "layflat": {
+      "allow_xy_rotation": true,
+      "fusion_mode": "touch",
+      "max_depth_mm": 200.0,
+      "max_length_mm": 300.0,
+      "minimum_overlap_mm": 0.01,
+      "packing_constraint": "max_depth",
+      "spacing_mm": 12.0,
+      "touch_tolerance_mm": 0.05
+    },
+    "material": {
+      "material_color": "#D8B16A",
+      "material_name": "Birch plywood",
+      "metallic": 0.0,
+      "opacity": 1.0,
+      "preset_id": "birch_plywood",
+      "roughness": 0.62
+    },
+    "mechanical_motion": {
+      "chain_distribution": 0.0,
+      "chain_intermediate_shafts": 4,
+      "chain_max_teeth": 120,
+      "chain_min_teeth": 12,
+      "chain_reduction": 4.0,
+      "chain_target_module": 2.0,
+      "driver_reverse": false,
+      "driver_speed_rpm": 10.0,
+      "gear_backlash": 0.1,
+      "gear_bore": 5.0,
+      "gear_module": 2.0,
+      "gear_pressure_angle": 20.0,
+      "gear_profile": "involute",
+      "gear_teeth": 30,
+      "gear_thickness": 6.0,
+      "mechanical_mode": "pick_plane",
+      "rack_backlash": 0.1,
+      "rack_body_height": 10.0,
+      "rack_thickness": 6.0,
+      "test_angle_deg": 0.0,
+      "test_playing": false
+    },
+    "modifier_extrude_down": {
+      "extrude_down_preset": "low_foot",
+      "ground_z": 0.0,
+      "plane_ratio": 22.0,
+      "plane_z": 2.2,
+      "tolerance": 0.001
+    },
+    "modifier_hollow": {
+      "hollow_preset": "thin_shell",
+      "thickness_mm": 1.0
+    },
+    "modifier_relief": {
+      "align": "center",
+      "depth_mm": 1.5,
+      "font_family": "Test Font",
+      "mode": "relief",
+      "rotation_deg": 0.0,
+      "size_mm": 12.0,
+      "text": "Text"
+    },
+    "modifier_repair": {
+      "fill_holes": true,
+      "remove_tiny_faces": true,
+      "repair_preset": "custom",
+      "tolerance_mm": 0.02
+    },
+    "modifier_simplify": {
+      "preserve_topology": true,
+      "reduction_percent": 35.0,
+      "simplify_preset": "print_safe"
+    },
+    "modifier_split": {
+      "offset_mm": 0.0,
+      "plane_size_mm": 20.0,
+      "rx_deg": 0.0,
+      "ry_deg": 0.0,
+      "split_preset": "center_y",
+      "tolerance": 1e-05
+    },
+    "plan_trace": {
+      "plan_trace_2d.active_part_snap": true,
+      "plan_trace_2d.grid_snap": true,
+      "plan_trace_2d.grid_step": 12.5,
+      "plan_trace_2d.mode": "line",
+      "plan_trace_2d.pattern_angle": 0.0,
+      "plan_trace_2d.pattern_aspect": 1.0,
+      "plan_trace_2d.pattern_cell_size": 12.0,
+      "plan_trace_2d.pattern_keep_form": true,
+      "plan_trace_2d.pattern_kind": "honeycomb",
+      "plan_trace_2d.pattern_margin": 2.0,
+      "plan_trace_2d.pattern_seed": 7,
+      "plan_trace_2d.pattern_wall": 2.0,
+      "plan_trace_2d.smart_snap": true
+    },
+    "primitive": {
+      "color": "#B8B8B8",
+      "phi_resolution": 32,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "primitive_id": "sphere",
+      "size": [
+        50.0,
+        10.0,
+        5.0
+      ],
+      "theta_resolution": 64
+    },
+    "test.pass128": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "density": 0.25,
+      "font": "DejaVu Sans",
+      "interaction": "grabbable",
+      "length": 100.0,
+      "line_style": "guide",
+      "move_preset": "+X",
+      "origin": [
+        1.0,
+        2.0,
+        3.0
+      ],
+      "point_style": "triad",
+      "uv": [
+        0.25,
+        0.75
+      ],
+      "visual_state": "hover"
+    },
+    "test.pass129": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "density": 0.25,
+      "font": "DejaVu Sans",
+      "interaction": "grabbable",
+      "length": 100.0,
+      "line_style": "guide",
+      "move_preset": "+X",
+      "origin": [
+        1.0,
+        2.0,
+        3.0
+      ],
+      "point_style": "triad",
+      "uv": [
+        0.25,
+        0.75
+      ],
+      "visual_state": "hover"
+    },
+    "test.pass130": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "interaction": "grabbable",
+      "line_style": "grabbable",
+      "move_preset": "+X",
+      "point_style": "target",
+      "visual_state": "auto"
+    },
+    "test.pass131": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "interaction": "grabbable",
+      "line_style": "construction",
+      "move_preset": "+X",
+      "point_style": "translate_arrow",
+      "visual_state": "hover"
+    },
+    "test.pass132.line": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "interaction": "grabbable",
+      "line_style": "grabbable",
+      "move_preset": "+X",
+      "point_style": "target",
+      "visual_state": "auto"
+    },
+    "test.pass135.fixed": {
+      "actor_kind": "point",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "interaction": "fixed",
+      "line_style": "grabbable",
+      "move_preset": "+X",
+      "point_style": "minimal",
+      "visual_state": "auto"
+    },
+    "test.pass135.visuals": {
+      "actor_kind": "line",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "interaction": "selectable",
+      "line_style": "selectable",
+      "move_preset": "+X",
+      "point_style": "minimal",
+      "visual_state": "auto"
+    },
+    "texture_projection": {
+      "attach_to_mesh": false,
+      "coverage_angle_deg": 30.0,
+      "offset_u": 0.0,
+      "offset_v": 0.0,
+      "preserve_aspect": true,
+      "projection_mode": "planar",
+      "repeat": true,
+      "rotation_deg": 0.0,
+      "scale": 1.0,
+      "texture_path": "/tmp/pytest-of-root/pytest-5/test_texture_native_selection_0/tex.png",
+      "usage": "visual"
+    },
+    "tool_core_diag": {
+      "actor_kind": "point",
+      "box_enabled": "enabled",
+      "box_inside_policy": "partial",
+      "box_mode": "replace",
+      "box_target": "tool_actors",
+      "density": 0.25,
+      "font": "DejaVu Sans",
+      "interaction": "selectable",
+      "length": 100.0,
+      "line_style": "selectable",
+      "move_preset": "+X",
+      "origin": [
+        1.0,
+        2.0,
+        3.0
+      ],
+      "point_style": "target",
+      "uv": [
+        0.25,
+        0.75
+      ],
+      "visual_state": "hover"
+    },
+    "vent_generator": {
+      "curve_radius": 0.0,
+      "curve_strength": 0.0,
+      "enclosure_volume_l": 45.0,
+      "fill_area": true,
+      "flare_factor": 1.0,
+      "flare_side": "none",
+      "mode": "MOD",
+      "quick_preset": "custom",
+      "rect_height": 35.0,
+      "rect_width": 120.0,
+      "section_area": 600.0,
+      "section_kind": "rectangle",
+      "smart_snap": true,
+      "target_length": 0.0,
+      "wall_thickness": 3.0
+    }
+  }
+}

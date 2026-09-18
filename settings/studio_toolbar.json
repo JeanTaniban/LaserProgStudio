@@ -1,0 +1,16 @@
+{
+  "toolbar_item_ids": [
+    "tool:box",
+    "tool:plan_trace",
+    "tool:joint",
+    "tool:texture_projection",
+    "tool:layflat",
+    "tool:engraving",
+    "modifier:split",
+    "boolean:subtract",
+    "boolean:union",
+    "boolean:separate"
+  ],
+  "toolbar_registry_version": 4,
+  "toolbar_max_items": 18
+}

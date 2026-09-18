@@ -643,6 +643,16 @@ Responsable de la déformation.
 
 Le socle certifie les sorties destinées à rester solides.
 
+Pour un `SOLID`, le plan de dessin/face sélectionnée ne doit pas être confondu implicitement avec l’axe neutre physique de la matière. Le contrat de déformation doit distinguer :
+
+- authoring plane ;
+- neutral surface/axis ;
+- épaisseur locale ;
+- conservation de matière ;
+- self-contact / self-intersection.
+
+Un résultat fermé et accepté par Manifold n’est pas suffisant pour Folding.
+
 ### Relief
 
 Responsable de la création des glyphes.
@@ -750,7 +760,8 @@ Critère P0 : aucune opération qui reçoit un solide DIRECT_CERTIFIED ne peut c
 3. Lay Flat qui présente une concaténation chevauchante comme une fusion ;
 4. `Separate mesh` qui transforme une cavity shell en seconde pièce ;
 5. sorties Boolean chaînées converties en `to_mesh()` qui peuvent introduire des triangles dégénérés ;
-6. Vent qui stocke des anchors de mesure dans les vertices du solide.
+6. Folding qui peut conserver un statut Manifold malgré dérive matière ou auto-recouvrement ;
+7. Vent qui stocke des anchors de mesure dans les vertices du solide.
 
 ### P2 — interopérabilité / persistance
 
@@ -878,7 +889,21 @@ La préflight Hollow cible doit donc inclure une estimation de **local feature s
 
 ### Folding
 
-- déformation sans postcondition solide commune.
+- déformation sans postcondition solide commune ;
+- le mode living-hinge accepte jusqu’à ±720° ;
+- un plan neutre placé sur la face d’un solide introduit une forte dérive de volume ;
+- Manifold direct peut accepter une géométrie qui se recouvre elle-même sur plusieurs tours.
+
+Corpus fermé `20 × 4 × 1 mm`, volume source `80 mm³` :
+
+- plan sur la face, 90° → ~`76.80 mm³` ;
+- 180° → ~`73.62 mm³` ;
+- 450° → ~`64.22 mm³` ;
+- 720° → ~`54.82 mm³`.
+
+Avec le plan placé au milieu de l’épaisseur, le même déformeur reste autour de `79.89–79.94 mm³`.
+
+À 720° avec plan médian, le résultat reste `Manifold NoError` mais le diagnostic spatial après weld trouve 17 faces dupliquées, 610 arêtes non-manifold et 1208 sommets non-manifold, signature d’un auto-recouvrement exact.
 
 ### Text Relief
 
@@ -1195,6 +1220,36 @@ La divergence persiste avec la même version exacte de Python. Le backend VTK de
 
 Conclusion : les tests cross-platform doivent vérifier les **contrats et tolérances de fidélité**, pas exiger des vertices identiques pour un backend non déterministe. Si une géométrie persistante doit être exactement reproductible, elle doit utiliser un backend déterministe validé ou être générée sur l’environnement Windows de référence.
 
+### Folding — solide fermé
+
+Un pavé fermé `20 × 4 × 1 mm` a été déformé avec un living hinge de 10 mm.
+
+Avec le plan d’authoring situé sur la face inférieure, tous les résultats restent fermés et Manifold `NoError`, mais le volume décroît fortement :
+
+- 90° : ~`76.799 mm³` ;
+- 180° : ~`73.621 mm³` ;
+- 270° : ~`70.488 mm³` ;
+- 450° : ~`64.225 mm³` ;
+- 720° : ~`54.825 mm³`.
+
+Avec le même plan translaté au milieu de l’épaisseur :
+
+- 90° : ~`79.936 mm³` ;
+- 180° : ~`79.886 mm³` ;
+- 270° : ~`79.886 mm³` ;
+- 450° : ~`79.889 mm³` ;
+- 720° : ~`79.886 mm³`.
+
+La dérive de volume est donc principalement liée à la position du neutral surface, pas à une simple erreur d’intégration numérique.
+
+Le cas 720° médian révèle toutefois un second défaut : le maillage indexé et Manifold direct restent valides, alors qu’une analyse de coïncidences spatiales détecte :
+
+- 17 triangles dupliqués après weld ;
+- 610 arêtes non-manifold après weld ;
+- 1208 sommets non-manifold après weld.
+
+Le contrat Folding doit donc inclure une détection de self-contact/self-intersection indépendante du simple statut Manifold.
+
 ### Baseline suite complète
 
 Le quality gate statique atteint pytest, mais la suite complète actuelle n’est pas verte :
@@ -1380,6 +1435,8 @@ La mission est validée seulement si :
 - Mechanical ne masque plus un échec Boolean par une concaténation ;
 - les tests géométriques ciblés passent sur Windows et Linux avec les mêmes versions de dépendances ;
 - les backends non déterministes sont contrôlés par des métriques de fidélité, pas par une identité arbitraire de vertices ;
+- Folding utilise une neutral surface explicitement définie pour les solides et respecte la tolérance de conservation matière ;
+- Folding rejette ou signale les auto-recouvrements/self-intersections même si Manifold.status() reste NoError ;
 - les régressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes point/edge/face`, `Acoustic skirt`, `Hollow cavity`, `Hollow → Lay Flat`, `Lay Flat overlap`, `3MF inch` et `3MF mirrored instance` sont verrouillées par des tests ;
 - tous les tests unitaires du socle passent ;
 - les chaînes inter-outils ciblées passent ;

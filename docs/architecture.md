@@ -114,7 +114,7 @@ The architectural rules are:
 
 - tools own geometry-generation or geometry-transformation business logic;
 - common integrity rules are exposed through the public `tool_api.geometry` boundary;
-- `SOLID`, `SOLID_SET`, `SURFACE`, `ASSEMBLY`, `VISUAL_PROXY` and helper outputs
+- `UNKNOWN`, `SOLID`, `SOLID_SET`, `SURFACE`, `VISUAL_PROXY` and helper outputs
   are distinct contracts and must not be conflated;
 - persistent solid outputs are checked by a shared Solid Commit Gate rather than by
   ad-hoc per-tool validators;
@@ -124,7 +124,14 @@ The architectural rules are:
 - coordinate welding is a repair/compatibility strategy, not the universal definition
   of manifoldness;
 - tool-specific preflight remains allowed for domain constraints, but generic mesh
-  integrity must stay centralized.
+  integrity must stay centralized;
+- scene assemblies/groups stay scene-level concepts and must not be represented as
+  concatenated pseudo-solid WorkMeshes;
+- geometry validation is differential through a GeometryChangeSet: only added or
+  replaced geometry is audited at commit time;
+- Boolean preparation must try the source representation first and stop when it is
+  already kernel-compatible and semantically correct;
+- orientation repair is a fallback and must preserve nested cavity-shell semantics.
 
 See `docs/CDC_MISSION_GEOMETRY_INTEGRITY_FOUNDATION.md` for the detailed target
 architecture, migration plan and validation criteria.

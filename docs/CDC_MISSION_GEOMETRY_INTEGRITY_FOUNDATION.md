@@ -642,12 +642,17 @@ La migration doit rester progressive : un outil peut continuer à fonctionner pe
 
 - vertices volontairement non référencés ;
 - incompatibilité directe avec Hollow ;
-- contrôle final insuffisant.
+- contrôle final insuffisant ;
+- état/preflight actuellement non déterministe sur un test ciblé : une configuration attendue `rectangular fill block` ressort `round pipe`.
 
 ### Lay Flat
 
 - concaténation de meshes appelée fusion ;
-- pièces interpénétrées possibles.
+- pièces interpénétrées possibles ;
+- réorientation positive de chaque shell qui détruit les cavités ;
+- regroupement par bounds qui ne prouve pas une union matérielle.
+
+Test mesuré : deux cubes de 20 mm se chevauchant de 10 mm sont concaténés en un WorkMesh Manifold-valide de `16000 mm³`, alors que leur union géométrique réelle vaut `12000 mm³`.
 
 ### Mechanical compound
 
@@ -661,7 +666,9 @@ La migration doit rester progressive : un outil peut continuer à fonctionner pe
 ### Hollow
 
 - offset de normales pouvant s’auto-intersecter ;
-- absence de certification finale.
+- absence de certification finale ;
+- la préparation Boolean actuelle inverse la sémantique de la coque de cavité ;
+- une différence avec un cutter entièrement situé dans le vide intérieur modifie pourtant la pièce et produit 4 shells, avec triangles dupliqués après soudure.
 
 ### Folding
 
@@ -671,13 +678,20 @@ La migration doit rester progressive : un outil peut continuer à fonctionner pe
 
 - triangulation à harmoniser avec le chemin contraint utilisé ailleurs.
 
-### Image Relief grayscale
+### Image Relief
 
-- `boolean_skip_merge` doit être persisté dans metadata comme dans le relief binaire.
+Le test binaire produit une géométrie fermée mais Manifold direct la refuse à cause de conflits d’orientation ; le fallback d’orientation actuel la rend valide. Le chemin grayscale est directement valide.
+
+Le grayscale ne persiste pas `boolean_skip_merge` dans metadata alors que le binaire le fait.
+
+Décision cible : ne pas institutionnaliser ces marqueurs spécifiques par outil. Le nouveau préparateur commun doit d’abord essayer DIRECT, puis ses candidats d’adaptation. Les flags `_lps_skip_boolean_merge` / `boolean_skip_merge` deviennent une dette de migration et doivent pouvoir disparaître lorsque le nouveau pipeline couvre correctement ces cas.
 
 ### Import 3MF
 
-- ne doit pas confondre validité 3MF indexée et résultat d’une soudure par coordonnées.
+- ne doit pas confondre validité 3MF indexée et résultat d’une soudure par coordonnées ;
+- doit convertir systématiquement l’unité source vers le millimètre interne.
+
+Test mesuré : un 3MF déclaré `unit="inch"` contenant une géométrie de taille 1 est actuellement importé avec une étendue de `1.0 mm` au lieu de `25.4 mm`. Le lecteur ignore donc aujourd’hui l’unité du modèle.
 
 ---
 
@@ -769,7 +783,16 @@ Le cube Hollow de test produit :
 
 La préparation Boolean actuelle produit encore un Manifold valide, mais volume ≈ `13431.49 mm³`.
 
-C’est une altération sémantique majeure causée par la réorientation indépendante des shells. Le nouveau pipeline doit tenter le kernel direct avant toute orientation.
+C’est une altération sémantique majeure causée par la réorientation indépendante des shells.
+
+Un test Boolean supplémentaire place un cube de 4 mm entièrement **dans la cavité vide** et lance une différence. L’opération devrait être géométriquement neutre. Elle modifie pourtant le résultat :
+
+- 48 triangles ;
+- 4 shells ;
+- volume ≈ `13303.49 mm³` ;
+- 12 triangles dupliqués après soudure géométrique.
+
+Le nouveau pipeline doit donc certifier DIRECT avant toute orientation et verrouiller la conservation de la sémantique volumique.
 
 ### Acoustic Diffuser
 
@@ -813,6 +836,42 @@ Conclusion : les anchors de mesure doivent sortir du payload solide.
 ### Split simple
 
 Un cube coupé par le plan central produit deux morceaux fermés et Manifold-valides. Le cas simple est sain ; il reste à couvrir les fallbacks complexes où `clip_closed_surface()` échoue.
+
+### Lay Flat
+
+Le test `Hollow → Lay Flat` confirme une perte de cavité :
+
+- source Hollow : ≈ `2568.51 mm³` ;
+- après Lay Flat : ≈ `13431.49 mm³`.
+
+La fonction de réparation de winding du Lay Flat force actuellement chaque composante fermée vers un volume positif. Elle ne peut pas être utilisée comme normalisation universelle.
+
+Deux cubes qui se chevauchent et sont regroupés par Lay Flat donnent en outre un WorkMesh accepté par Manifold avec `16000 mm³`, alors que l’union réelle des volumes vaut `12000 mm³`. Cela prouve que `KernelCompatibility` ne valide pas la sémantique « union ».
+
+### 3MF
+
+Un fixture 3MF synthétique en pouces a été chargé avec une étendue `1.0` au lieu de `25.4`. La conversion d’unité est absente du reader utilisé par `ModelStore.load_3mf()`.
+
+### Relief
+
+Cas mesurés :
+
+- texte VTK `AB8` : 3 shells légitimes, directement Manifold-valides ;
+- image grayscale : directement valide, mais son flag skip-merge n’est que runtime ;
+- image binaire : fermée par indices mais 36 conflits d’orientation ; Manifold direct refuse, puis la préparation actuelle réussit après réorientation.
+
+Ce dernier cas justifie un pipeline multi-candidats, mais pas un prétraitement systématique.
+
+### Baseline suite complète
+
+Le quality gate statique atteint pytest, mais la suite complète actuelle n’est pas verte :
+
+- `1896 passed` ;
+- `81 failed` ;
+- `5 skipped` ;
+- `96 warnings`.
+
+Une grande partie des échecs concerne UI/architecture/Cloth/Plan Tracer et n’est pas causée par cette branche documentaire. Les tests géométriques de cette mission doivent donc avoir leur propre baseline stricte et reproductible pendant que la dette générale est traitée séparément.
 
 ---
 
@@ -901,6 +960,17 @@ post-audit + certification
 
 Une adaptation d’orientation multi-shell doit respecter l’imbrication extérieur/cavité. Elle ne peut pas simplement rendre chaque shell positive.
 
+Les candidats d’adaptation sont évalués par coût croissant, sans modifier la source :
+
+1. `DIRECT` — aucune modification ;
+2. `CONSISTENT_WINDING` — seulement propagation locale de winding partagé, sans forcer chaque shell positive ;
+3. `MANIFOLD_MERGE` — best-effort du kernel ;
+4. `CONSISTENT_WINDING + MANIFOLD_MERGE` ;
+5. nettoyage conservateur sans déplacement significatif ;
+6. réparation explicite/reconstruction.
+
+Dès qu’un candidat satisfait **à la fois** KernelCompatibility et SemanticValidity, le pipeline s’arrête.
+
 Le PreparedSolid est éphémère et ne remplace pas le WorkMesh de l’utilisateur avant réussite de l’opération.
 
 ---
@@ -916,12 +986,15 @@ La mission est validée seulement si :
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;
+- une Boolean avec un cutter entièrement contenu dans une cavité reste neutre ;
+- Lay Flat préserve la sémantique volumique des pièces et ne transforme jamais une assembly en pseudo-union ;
+- les unités 3MF sont normalisées en millimètres avant création des WorkMesh ;
 - Import et Save/Load conservent le contrat ;
 - Simplify ne peut plus introduire silencieusement de faces/composantes parasites ;
 - les données de mesure Vent ne sont plus dans le mesh solide ;
 - Lay Flat ne présente plus une concaténation comme une union ;
 - Mechanical ne masque plus un échec Boolean par une concaténation ;
-- les regressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes`, `Acoustic skirt` et `Hollow cavity` sont verrouillées par des tests ;
+- les régressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes`, `Acoustic skirt`, `Hollow cavity`, `Hollow → Lay Flat`, `Lay Flat overlap` et `3MF inch` sont verrouillées par des tests ;
 - tous les tests unitaires du socle passent ;
 - les chaînes inter-outils ciblées passent ;
 - `scripts/quality_gate.py` reste vert ;

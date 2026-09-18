@@ -678,6 +678,92 @@ def _tool_output_probe() -> dict[str, Any]:
     return out
 
 
+def _apply_affine(mesh: Any, matrix: np.ndarray, name: str) -> WorkMesh:
+    pts = np.asarray(getattr(mesh, "vertices", []) or [], dtype=np.float64)
+    linear = np.asarray(matrix, dtype=np.float64)
+    if linear.shape != (4, 4):
+        raise ValueError("Expected a 4x4 affine matrix.")
+    if pts.size == 0:
+        transformed = pts.reshape((-1, 3))
+    else:
+        homo = np.column_stack((pts[:, :3], np.ones(len(pts), dtype=np.float64)))
+        transformed = (homo @ linear.T)[:, :3]
+    return WorkMesh(
+        name=name,
+        vertices=[tuple(map(float, row)) for row in transformed],
+        triangles=[tuple(map(int, tri[:3])) for tri in (getattr(mesh, "triangles", []) or [])],
+        color=str(getattr(mesh, "color", "#B8B8B8") or "#B8B8B8"),
+    )
+
+
+def _affine_contract_probe() -> dict[str, Any]:
+    source = build_box(_req("box", size_x=20.0, size_y=10.0, size_z=6.0))
+    out: dict[str, Any] = {"source": audit_mesh(source)}
+    angle = math.radians(33.0)
+    transforms = {
+        "translate_rotate": np.array([
+            [math.cos(angle), -math.sin(angle), 0.0, 12.0],
+            [math.sin(angle), math.cos(angle), 0.0, -7.0],
+            [0.0, 0.0, 1.0, 4.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ], dtype=np.float64),
+        "positive_nonuniform_scale": np.diag([2.0, 0.5, 1.5, 1.0]),
+        "mirror_x": np.diag([-1.0, 1.0, 1.0, 1.0]),
+        "near_singular_x": np.diag([1.0e-12, 1.0, 1.0, 1.0]),
+        "singular_x": np.diag([0.0, 1.0, 1.0, 1.0]),
+    }
+    for key, matrix in transforms.items():
+        candidate = _apply_affine(source, matrix, f"affine_{key}")
+        out[key] = {
+            "determinant": float(np.linalg.det(matrix[:3, :3])),
+            "mesh": audit_mesh(candidate),
+        }
+    return out
+
+
+def _split_raw_fallback_probe() -> dict[str, Any]:
+    try:
+        from laserprog_studio.modifiers.split_plane import _mesh_to_polydata, _polydata_to_workmesh
+
+        source = build_box(_req("box", size_x=20.0, size_y=20.0, size_z=20.0))
+        poly = _mesh_to_polydata(source)
+        clipped = poly.clip(normal=(1.0, 0.0, 0.0), origin=(0.0, 0.0, 0.0), invert=False).triangulate().clean()
+        result = _polydata_to_workmesh(
+            clipped,
+            name="split_raw_clip_fallback",
+            color=source.color,
+            source_mesh=source,
+        )
+        return {
+            "source": audit_mesh(source),
+            "fallback_result": audit_mesh(result) if result is not None else None,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def _repair_open_mesh_probe() -> dict[str, Any]:
+    try:
+        from laserprog_studio.geometry_ops.mesh_repair import repair_work_mesh
+
+        source = build_box(_req("box", size_x=20.0, size_y=20.0, size_z=20.0))
+        source.triangles = list(source.triangles[:-2])
+        repaired, repair_report = repair_work_mesh(
+            source,
+            tolerance_mm=0.005,
+            fill_holes=True,
+            remove_tiny_faces=True,
+            optional_backends=True,
+        )
+        return {
+            "source": audit_mesh(source),
+            "repair_report": asdict(repair_report),
+            "result": audit_mesh(repaired),
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def main() -> int:
     def _pkg_version(name: str) -> str:
         try:
@@ -718,9 +804,13 @@ def main() -> int:
         "formats": {},
         "relief": {},
         "tool_outputs": {},
+        "affine": {},
     }
 
     report["tool_outputs"] = _tool_output_probe()
+    report["affine"] = _affine_contract_probe()
+    report["inter_tool"]["split_raw_fallback"] = _split_raw_fallback_probe()
+    report["inter_tool"]["repair_open_mesh"] = _repair_open_mesh_probe()
 
     with tempfile.TemporaryDirectory() as td:
         inch_path = Path(td) / "unit_inch.3mf"

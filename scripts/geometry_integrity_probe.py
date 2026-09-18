@@ -397,6 +397,33 @@ def _relief_probe() -> dict[str, Any]:
     return out
 
 
+def _three_mf_roundtrip_probe(mesh: Any) -> dict[str, Any]:
+    try:
+        from laserprog_studio.domain.work_model import ModelStore
+        store = ModelStore()
+        store.set_meshes([mesh], push_undo=False)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "roundtrip.3mf"
+            store.export_3mf(path)
+            loaded = read_3mf_meshes(path)
+            return {
+                "mesh_count": len(loaded),
+                "meshes": [
+                    audit_mesh(
+                        WorkMesh(
+                            name=obj.name,
+                            vertices=list(obj.vertices),
+                            triangles=list(obj.triangles),
+                            color=obj.color,
+                        )
+                    )
+                    for obj in loaded
+                ],
+            }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _project_roundtrip_probe(mesh: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
     try:
@@ -668,6 +695,8 @@ def main() -> int:
             "source": audit_mesh(hollow_mesh),
             "layflat": audit_mesh(_layflat_workmesh(hollow_mesh, "hollow_box")),
         }
+        report["inter_tool"]["hollow_3mf_roundtrip"] = _three_mf_roundtrip_probe(hollow_mesh)
+        report["inter_tool"]["hollow_project_roundtrip"] = _project_roundtrip_probe(hollow_mesh)
         mirrored_hollow = _mirror_x(hollow_mesh, "hollow_box_mirrored")
         report["inter_tool"]["hollow_mirrored"] = audit_mesh(mirrored_hollow)
 

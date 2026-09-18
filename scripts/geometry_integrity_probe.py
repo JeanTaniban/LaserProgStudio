@@ -329,6 +329,50 @@ def _write_probe_3mf(path: Path, *, unit: str = "millimeter", item_transform: st
         zf.writestr("3D/3dmodel.model", xml)
 
 
+def _write_nested_component_3mf(path: Path) -> None:
+    xml = '''<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" name="base" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="1" y="0" z="0"/>
+          <vertex x="0" y="1" z="0"/>
+          <vertex x="0" y="0" z="1"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="1" v3="3"/>
+          <triangle v1="1" v2="2" v3="3"/>
+          <triangle v1="2" v2="0" v3="3"/>
+        </triangles>
+      </mesh>
+    </object>
+    <object id="2" name="level1" type="model">
+      <components>
+        <component objectid="1" transform="1 0 0 0 1 0 0 0 1 10 0 0"/>
+      </components>
+    </object>
+    <object id="3" name="level2" type="model">
+      <components>
+        <component objectid="2" transform="1 0 0 0 1 0 0 0 1 0 0 30"/>
+      </components>
+    </object>
+  </resources>
+  <build>
+    <item objectid="3" transform="1 0 0 0 1 0 0 0 1 5 20 0"/>
+  </build>
+</model>'''
+    content_types = '''<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>'''
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("3D/3dmodel.model", xml)
+
+
 def _mesh_bounds(mesh: Any) -> list[float]:
     vertices = list(getattr(mesh, "vertices", []) or [])
     if not vertices:
@@ -846,6 +890,27 @@ def main() -> int:
             if mirrored
             else {"error": "no mesh"}
         )
+
+        nested_path = Path(td) / "nested_components.3mf"
+        _write_nested_component_3mf(nested_path)
+        nested = read_3mf_meshes(nested_path)
+        report["formats"]["3mf_nested_components"] = {
+            "mesh_count": len(nested),
+            "bounds": _mesh_bounds(nested[0]) if nested else None,
+            "expected_bounds": [15.0, 20.0, 30.0, 16.0, 21.0, 31.0],
+            "mesh": (
+                audit_mesh(
+                    WorkMesh(
+                        name=nested[0].name,
+                        vertices=list(nested[0].vertices),
+                        triangles=list(nested[0].triangles),
+                        color=nested[0].color,
+                    )
+                )
+                if nested
+                else None
+            ),
+        }
 
     report["relief"] = _relief_probe()
     report["inter_tool"]["cavity_measure"] = _cavity_measure_probe()

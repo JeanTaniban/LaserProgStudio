@@ -670,6 +670,11 @@ def _tool_output_probe() -> dict[str, Any]:
             "ready": bool(plan.ready),
             "issues": list(plan.issues),
             "folded_solid": audit_mesh(plan.folded_mesh) if plan.folded_mesh is not None else None,
+            "folded_project_roundtrip": (
+                _project_roundtrip_probe(plan.folded_mesh)
+                if plan.folded_mesh is not None
+                else None
+            ),
             "flat_surface": audit_mesh(plan.flat_mesh) if plan.flat_mesh is not None else None,
         }
     except Exception as exc:

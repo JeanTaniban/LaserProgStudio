@@ -314,9 +314,9 @@ def main() -> int:
     }
     if hollow.ok and hollow.meshes:
         try:
-            from laserprog_studio.boolean_ops import boolean_subtract
+            from laserprog_studio.boolean_ops import boolean_difference
             cavity_probe = build_box(_req("box", size_x=4.0, size_y=4.0, size_z=4.0))
-            hollow_cut = boolean_subtract(hollow.meshes[0], cavity_probe, cutter_margin_mm=0.0)
+            hollow_cut = boolean_difference(hollow.meshes[0], cavity_probe, cutter_margin_mm=0.0)
             report["inter_tool"]["hollow_boolean_cavity_probe"] = {
                 "ok": True,
                 "result": audit_mesh(hollow_cut),

@@ -87,15 +87,17 @@ Chaque mesh persistant possède un rôle explicite.
 
 | Rôle | Signification |
 |---|---|
-| `SOLID` | Un volume fermé destiné à la fabrication et aux opérations solides |
-| `SOLID_SET` | Plusieurs volumes fermés légitimes dans un même WorkMesh |
+| `UNKNOWN` | Objet legacy/importé dont le rôle n’a pas encore été qualifié |
+| `SOLID` | Matière volumique fermée destinée à la fabrication et aux opérations solides |
+| `SOLID_SET` | Plusieurs régions matérielles fermées légitimes dans un même WorkMesh |
 | `SURFACE` | Surface volontairement ouverte |
-| `ASSEMBLY` | Groupe de pièces distinctes, sans prétendre qu’elles forment une union |
 | `VISUAL_PROXY` | Géométrie d’affichage uniquement |
 | `HELPER` | Mesure, guide, gizmo ou données auxiliaires |
 | `DECAL` | Géométrie ou projection visuelle non destinée aux opérations solides |
 
 Un `VISUAL_PROXY` ou un `HELPER` ne doit jamais devenir accidentellement un opérande Boolean ou un objet de fabrication.
+
+`ASSEMBLY` n’est finalement **pas** un rôle de WorkMesh. Une assembly est un concept de scène/groupe contenant plusieurs objets identifiés. Mettre plusieurs pièces dans un seul WorkMesh puis l’appeler assembly recréerait l’ambiguïté actuelle de Lay Flat. Le grouping doit vivre au niveau scène/projet.
 
 ### 4.2 GeometryMutation
 
@@ -140,11 +142,13 @@ Pour `SOLID` et `SOLID_SET` :
 
 - BASIC_MESH ;
 - arêtes indexées cohérentes ;
-- fermeture des composantes attendues ;
-- orientation cohérente ;
-- volume non nul ;
-- absence de composante parasite selon le contrat métier ;
-- construction Manifold directe réussie.
+- fermeture des coques attendues ;
+- sémantique d’orientation cohérente avec la matière et les cavités ;
+- volume matériel fini et strictement positif ;
+- absence de composante parasite selon le contrat de l’opération ;
+- certification par le kernel Manifold sur la représentation retenue.
+
+Important : plusieurs coques de triangles ne signifient pas plusieurs corps matériels. Un solide creux possède typiquement une coque extérieure et une coque intérieure orientée en sens opposé. Le validateur ne doit donc jamais « corriger » chaque coque indépendamment vers un volume positif.
 
 ### BOOLEAN_INPUT
 
@@ -164,60 +168,105 @@ Les tolérances, l’ordre des contrôles et les codes d’erreur sont définis 
 
 ## 6. Règle Manifold
 
-La règle primaire est la topologie indexée du mesh.
+La préparation vers Manifold doit préserver la sémantique volumique avant de chercher à « nettoyer » le mesh.
 
-Le pipeline doit d’abord essayer :
+Ordre obligatoire :
 
 ```text
-WorkMesh
-→ contrôle structurel
-→ Manifold(mesh)
+WorkMesh original
+→ BASIC_MESH
+→ tentative Manifold directe, sans soudure ni réorientation globale
+→ vérification status / non-vide / volume signé
+→ si acceptable : STOP, conserver cette représentation
+→ sinon seulement : adaptation conservatrice
+→ nouveau test Manifold
+→ réparation plus forte uniquement si la politique l’autorise
 ```
 
-sans `merge()` automatique.
+Une entrée directement acceptée par Manifold et représentant un volume matériel positif ne doit pas être retessellée, soudée ou réorientée par habitude.
 
-La fusion de sommets par coordonnées n’est pas une définition universelle de la validité d’un solide et ne doit pas être utilisée comme motif absolu de rejet.
+Cette règle est nécessaire pour conserver les cavités. Les tests 2026-09-18 ont montré qu’un Hollow de cube a un volume brut correct d’environ `2568.51 mm³`, alors que la préparation Boolean actuelle réoriente séparément les deux coques et transforme ce volume en environ `13431.49 mm³`. La cavité est alors interprétée comme de la matière.
 
-Une soudure ou un `Mesh.merge()` ne peut intervenir que comme stratégie de compatibilité ou de réparation explicite, après échec du chemin direct.
+À l’inverse, l’Acoustic Diffuser skirt est fermé par ses indices mais possède des conflits d’orientation ; Manifold direct le refuse. Une étape d’orientation peut donc être utile **en fallback**, jamais en prétraitement universel.
 
-Le rapport doit distinguer :
+La fusion de sommets par coordonnées n’est pas une définition universelle de manifoldness. Le test synthétique de deux cubes fermés en contact ponctuel est accepté directement par Manifold avec deux volumes valides, alors que `geometric_manifold_v2` le classe invalide après soudure par coordonnées. Ce diagnostic devient donc un **warning de contact/coïncidence**, pas une autorité absolue de rejet.
 
-- mesh valide directement ;
-- mesh valide après adaptation conservatrice ;
-- mesh non certifiable ;
-- mesh volontairement non-solide.
+Une soudure ou `Mesh.merge()` n’intervient qu’après échec du chemin direct. Elle reste un best-effort du kernel, pas une preuve indépendante.
+
+Toute adaptation produit un objet éphémère :
+
+```python
+PreparedSolid(
+    source_fingerprint=...,
+    manifold=...,
+    strategy=...,
+    source_unchanged=True,
+    audit=...,
+)
+```
+
+Le WorkMesh source n’est pas modifié par la préparation Boolean.
+
+Le rapport distingue au minimum :
+
+- `DIRECT_CERTIFIED` ;
+- `ADAPTED_CERTIFIED` ;
+- `REPAIR_REQUIRED` ;
+- `NON_SOLID` ;
+- `REJECTED`.
 
 ---
 
-## 7. Composantes et pollution
+## 7. Coques, corps, cavités et pollution
 
-Le nombre de composantes n’est pas un critère de validité universel.
+Le mot « composante » est trop ambigu pour servir seul de contrat.
 
-Exemples légitimes :
+Le socle distingue au minimum :
 
-- plusieurs lettres d’un texte ;
-- plusieurs îlots solides intentionnels ;
-- un objet `SOLID_SET`.
+1. **surface shell** : composante de triangles reliés par indices/arêtes ;
+2. **material region** : région volumique positive de matière ;
+3. **cavity shell** : coque fermée orientée comme un vide à l’intérieur d’une région ;
+4. **disconnected material region** : deuxième pièce matérielle réellement séparée ;
+5. **orphan fragment** : fragment apparu sans être autorisé par le contrat.
 
-Le socle calcule un inventaire stable des composantes :
+Exemples :
 
-- nombre ;
+- Hollow cube : deux surface shells, mais une seule pièce creuse sémantique ;
+- texte « AB » : plusieurs régions matérielles légitimes ;
+- Simplify d’une pièce monobloc : une nouvelle petite île détachée est une régression ;
+- deux cubes volontairement distincts : plusieurs régions peuvent être autorisées.
+
+Le socle calcule deux inventaires :
+
+### SurfaceTopologyReport
+
+- shells par connectivité indexée ;
 - triangles ;
 - surface ;
-- volume ;
 - bbox ;
-- fraction de taille par rapport au mesh total.
+- arêtes frontière/non-manifold ;
+- winding/orientation.
 
-Le contrat de l’opération indique ensuite la politique attendue :
+### SolidKernelReport
+
+- status Manifold ;
+- volume signé total ;
+- surface ;
+- informations de décomposition disponibles ;
+- stratégie de préparation utilisée.
+
+Le contrat d’opération indique ensuite la politique avant/après :
 
 | Politique | Exemple |
 |---|---|
-| `PRESERVE` | Simplify |
-| `ALLOW_CHANGE` | Boolean |
-| `EXACT(n)` | Générateur connu |
-| `DECLARED_SET` | Relief texte ou sortie multi-corps connue |
+| `PRESERVE_SHELL_CONNECTIVITY` | Simplify d’un solide |
+| `PRESERVE_MATERIAL_REGIONS` | Simplify/fidelity |
+| `ALLOW_TOPOLOGY_CHANGE` | Boolean |
+| `DECLARE_OUTPUT_COUNT(n)` | Générateur déterministe |
+| `ALLOW_CAVITIES` | Hollow |
+| `ALLOW_SOLID_SET` | Relief texte |
 
-Simplify doit donc comparer avant/après au lieu de supprimer arbitrairement la plus petite composante.
+Aucune logique générique ne doit faire `extract_largest()` ou supprimer automatiquement les petits fragments. La décision dépend du delta attendu par l’opération.
 
 ---
 
@@ -236,6 +285,8 @@ src/laserprog_studio/geometry_contract/
     components.py
     manifold_certifier.py
     comparison.py
+    preparation.py
+    changeset.py
     repair.py
     fingerprint.py
     certification.py
@@ -280,22 +331,42 @@ Un CreatorTool ne doit jamais importer directement le package interne de validat
 
 ---
 
-## 9. Intégration avec OperationManager
+## 9. Intégration avec OperationManager et GeometryChangeSet
 
-`OperationManager.register()` doit accepter un `geometry_contract`.
+`OperationManager.register()` accepte un `geometry_contract`.
 
 En interne, la registry conserve :
 
 - la fonction de l’opération ;
 - son contrat géométrique.
 
-Après exécution, `OperationManager` appelle automatiquement le socle pour produire un `GeometryAuditReport`.
+La nouvelle frontière standard est un `GeometryChangeSet` :
 
-Le résultat est enrichi d’un contrat/certificat standardisé.
+```python
+GeometryChangeSet(
+    added=(...),
+    replaced=((mesh_id, new_mesh), ...),
+    removed=(mesh_id, ...),
+)
+```
+
+Le but est de ne **jamais rescanner toute la scène** simplement parce qu’un outil modifie un objet.
+
+Le Solid Commit Gate certifie uniquement :
+
+- les meshes ajoutés ;
+- les meshes remplacés ;
+- les géométries dont le fingerprint a réellement changé.
+
+Les meshes inchangés conservent leur certification.
+
+Pendant la migration, les anciens `OperationResult(meshes=scene_complete)` restent acceptés. Un adaptateur compare `mesh_id + geometry_fingerprint` pour déduire le ChangeSet. Les nouveaux outils doivent produire directement un changement explicite.
+
+Après exécution, `OperationManager` appelle automatiquement le socle pour produire un `GeometryAuditReport` et attacher les certificats aux changements.
 
 L’outil ne recode aucune validation générique.
 
-Pour les opérations qui ne changent pas la géométrie, le contrat `METADATA_ONLY` permet de conserver la certification existante.
+Pour `METADATA_ONLY`, la certification géométrique est conservée. Pour `AFFINE`, la certification topologique peut être conservée, tandis que les propriétés métriques/fingerprint sont actualisées de manière déterministe.
 
 ---
 
@@ -327,7 +398,7 @@ Le preview exécute :
 
 ### Apply
 
-Un résultat déclaré `SOLID` ou `SOLID_SET` ne peut pas être commité sans satisfaire son profil.
+Un résultat déclaré `SOLID` ou `SOLID_SET` ne peut pas être commité sans satisfaire son profil. Le gate travaille sur le `GeometryChangeSet`, pas sur toute la scène.
 
 En cas d’échec :
 
@@ -347,7 +418,9 @@ Le socle calcule une signature stable à partir de :
 - vertices ;
 - triangles ;
 - paramètres du profil ;
-- version du validateur.
+- version du validateur ;
+- version du profil ;
+- kernel et version exacte du kernel.
 
 Un certificat contient au minimum :
 
@@ -355,6 +428,9 @@ Un certificat contient au minimum :
 {
   "schema_version": 1,
   "validator_version": 1,
+  "profile_version": 1,
+  "kernel": "manifold3d",
+  "kernel_version": "...",
   "role": "solid",
   "profile": "manufacturing_solid",
   "status": "certified",
@@ -406,24 +482,41 @@ Exemples :
 
 Responsable de :
 
-- choisir l’algorithme de décimation ;
-- définir la réduction demandée.
+- demander un objectif de simplification ;
+- choisir ou proposer un backend de simplification.
 
 Le socle contrôle :
 
-- pollution ;
-- composantes ;
 - fermeture ;
-- certification ;
-- dérive.
+- création/disparition de shells ;
+- création/disparition de régions matérielles ;
+- certification kernel ;
+- volume ;
+- dérive géométrique ;
+- objectif réellement atteint.
 
-Le preset `viewport_proxy` doit produire un `VISUAL_PROXY` et ne doit pas remplacer le solide maître.
+Les tests ont reproduit le défaut actuel sur une pièce « haltère » valide : avec `preserve_topology=False`, PyVista retourne sans erreur des résultats avec jusqu’à 17 arêtes ouvertes et 3 îlots. Avec `preserve_topology=True`, le même cas reste valide mais peut ne presque plus se simplifier.
+
+Le backend `Manifold.simplify(tolerance)` est un candidat intéressant parce qu’il conserve un Manifold valide, mais il ne remplace pas le contrat : à `1 mm` de tolérance, le test a supprimé le pont de l’haltère et transformé une région connectée en deux volumes fermés. Le gate de fidélité reste donc obligatoire quel que soit le backend.
+
+Stratégie cible :
+
+1. produire un candidat ;
+2. certifier le candidat ;
+3. comparer source/candidat ;
+4. si le contrat topologique ou la dérive est dépassé, réduire l’agressivité ;
+5. accepter le meilleur candidat sûr ;
+6. sinon conserver la source et signaler que la réduction demandée n’est pas atteignable avec le profil choisi.
+
+Le preset `viewport_proxy` doit produire un `VISUAL_PROXY` séparé et ne doit jamais remplacer le solide maître.
 
 ### Hollow
 
 Responsable du calcul de coque.
 
-Le socle certifie la sortie.
+Le socle certifie la sortie **sans perdre la relation extérieur/cavité**.
+
+Une préparation Boolean ne doit jamais réorienter toutes les shells vers un volume positif. Le test de référence `hollow_box` devient un test de sémantique volumique : volume avant préparation, volume du PreparedSolid et résultat Boolean doivent représenter la même quantité de matière à tolérance définie.
 
 ### Split
 
@@ -445,9 +538,11 @@ Le contrat peut déclarer `SOLID_SET`.
 
 ### Lay Flat
 
-Doit déclarer `ASSEMBLY` lorsqu’il ne fait qu’agréger des pièces.
+Lorsqu’il regroupe des pièces sans union volumique, il doit conserver plusieurs WorkMesh et créer un **groupe de scène**.
 
-Une vraie fusion volumique doit être une opération Boolean et être déclarée comme telle.
+Il est interdit de concaténer plusieurs pièces dans un WorkMesh et de présenter cette concaténation comme une fusion.
+
+Une vraie fusion volumique doit passer par le pipeline Boolean et produire une sortie certifiée.
 
 ### Mechanical Motion
 
@@ -630,7 +725,187 @@ L’objectif est de tester les contrats entre outils, sans rendre les outils dé
 
 ---
 
-## 21. Critères de validation
+## 21. Résultats d’audit runtime — 2026-09-18
+
+Les mesures suivantes ont été exécutées sur GitHub Actions avec Python 3.12 et la dépendance `manifold3d` résolue en version 3.5.3.
+
+### Tests ciblés existants
+
+51 tests géométriques ciblés exécutés :
+
+- 50 réussis ;
+- 1 échec actuel dans Vent Generator : le preflight attend `rectangular fill block` mais reçoit `round pipe`.
+
+Cet échec est classé **contrat/état de l’outil**, distinct d’une erreur topologique.
+
+### Simplify reproduit
+
+Source « haltère » :
+
+- 44 triangles ;
+- 1 shell ;
+- Manifold `NoError`.
+
+PyVista `preserve_topology=False` :
+
+- réduction 50 % → 22 triangles, 6 arêtes ouvertes, 2 îlots, `NotManifold` ;
+- réduction 75 % → 11 triangles, 17 arêtes ouvertes, 3 îlots, `NotManifold` ;
+- réduction 90 % → 4 triangles, ouvert, `NotManifold`.
+
+L’opération retourne pourtant actuellement un succès.
+
+PyVista `preserve_topology=True` conserve le mesh valide mais reste à 44 triangles sur ce cas.
+
+`Manifold.simplify()` conserve la validité kernel mais à forte tolérance peut supprimer un pont et changer la connectivité. Conclusion : **kernel-valid n’est pas équivalent à faithful-to-source**.
+
+### Hollow
+
+Le cube Hollow de test produit :
+
+- 2 shells indexées ;
+- 24 triangles ;
+- Manifold direct valide ;
+- volume signé ≈ `2568.51 mm³`.
+
+La préparation Boolean actuelle produit encore un Manifold valide, mais volume ≈ `13431.49 mm³`.
+
+C’est une altération sémantique majeure causée par la réorientation indépendante des shells. Le nouveau pipeline doit tenter le kernel direct avant toute orientation.
+
+### Acoustic Diffuser
+
+Le skirt :
+
+- fermé par indices ;
+- zéro arête frontière ;
+- `geometric_manifold_v2=True` ;
+- 188 conflits d’orientation ;
+- Manifold direct : `NotManifold`.
+
+La préparation d’orientation actuelle le rend ensuite Manifold `NoError`.
+
+Conclusion : le validateur commun doit mesurer explicitement l’orientation ; fermeture + weld ne suffisent pas.
+
+Le core Acoustic Diffuser est directement valide.
+
+### Contact ponctuel
+
+Deux cubes fermés partageant seulement une position de sommet, avec indices distincts :
+
+- topologie indexée fermée ;
+- Manifold direct : `NoError` ;
+- 2 volumes ;
+- `geometric_manifold_v2=False` après soudure par coordonnées.
+
+Conclusion : la soudure géométrique ne peut pas être une autorité de rejet universelle.
+
+### Vent → Hollow
+
+Le Vent flared de test :
+
+- 944 triangles fermés ;
+- Manifold direct valide ;
+- 8 sommets inutilisés ajoutés uniquement pour les mesures.
+
+`Hollow` le rejette précisément pour ces 8 sommets.
+
+Conclusion : les anchors de mesure doivent sortir du payload solide.
+
+### Split simple
+
+Un cube coupé par le plan central produit deux morceaux fermés et Manifold-valides. Le cas simple est sain ; il reste à couvrir les fallbacks complexes où `clip_closed_surface()` échoue.
+
+---
+
+## 22. Autorités et niveaux de vérité
+
+Le système ne doit plus avoir un booléen unique `is_valid`.
+
+Les niveaux sont :
+
+1. **StructuralValidity** — données numériques/indexées exploitables ;
+2. **SurfaceTopologyValidity** — fermeture, edges, winding, shells ;
+3. **SemanticValidity** — rôle, cavités, régions, fidélité avant/après ;
+4. **KernelCompatibility** — représentation acceptée par Manifold ;
+5. **OperationContractValidity** — postconditions propres au type de mutation.
+
+Une couche peut être valide alors qu’une autre ne l’est pas.
+
+Exemples réels :
+
+- Acoustic skirt : surface fermée mais kernel direct invalide ;
+- cubes en contact : diagnostic welded invalide mais kernel direct valide ;
+- Manifold-simplified dumbbell : kernel valide mais contrat de connectivité Simplify invalide ;
+- Hollow préparé actuellement : kernel valide mais sémantique volumique invalide.
+
+---
+
+## 23. Reproductibilité du kernel
+
+La version de `manifold3d` ne doit plus rester non bornée.
+
+Après validation du corpus Windows + CI, la version retenue doit être figée dans les dépendances de production.
+
+Toute certification persistée contient :
+
+- nom du kernel ;
+- version ;
+- version du profil ;
+- version du schéma.
+
+Un certificat produit avec une version de kernel différente est requalifié paresseusement avant un usage sensible.
+
+---
+
+## 24. GeometryChangeSet et performance
+
+Le contrôle global doit être **central**, mais pas global en coût.
+
+Chaque opération publie les objets réellement touchés.
+
+Le gate :
+
+- ignore les meshes inchangés ;
+- ne recalcule pas Manifold pour un simple changement de matériau ;
+- réutilise les certificats compatibles ;
+- réalise le fingerprint complet seulement sur les géométries modifiées ;
+- peut différer les diagnostics lourds pendant le preview ;
+- impose la certification finale uniquement avant commit/Boolean/export.
+
+Le modèle cible évite ainsi qu’un outil local provoque un audit O(toute la scène).
+
+---
+
+## 25. Pipeline Boolean cible
+
+```text
+source WorkMesh
+  ↓
+structural audit
+  ↓
+kernel direct, représentation source préservée
+  ├─ valide + sémantique correcte → PreparedSolid DIRECT
+  └─ échec / orientation globale négative
+          ↓
+     adaptation non destructive
+          ↓
+     kernel retry
+          ├─ valide → PreparedSolid ADAPTED
+          └─ échec → réparation autorisée ou rejet
+  ↓
+Boolean Manifold
+  ↓
+canonical output
+  ↓
+post-audit + certification
+```
+
+Une adaptation d’orientation multi-shell doit respecter l’imbrication extérieur/cavité. Elle ne peut pas simplement rendre chaque shell positive.
+
+Le PreparedSolid est éphémère et ne remplace pas le WorkMesh de l’utilisateur avant réussite de l’opération.
+
+---
+
+## 26. Critères de validation
 
 La mission est validée seulement si :
 
@@ -639,11 +914,14 @@ La mission est validée seulement si :
 - chaque sortie géométrique persistante possède un rôle explicite ou un rôle hérité de manière déterministe ;
 - les solides passent par le Solid Commit Gate ;
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
+- un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
+- le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;
 - Import et Save/Load conservent le contrat ;
 - Simplify ne peut plus introduire silencieusement de faces/composantes parasites ;
 - les données de mesure Vent ne sont plus dans le mesh solide ;
 - Lay Flat ne présente plus une concaténation comme une union ;
 - Mechanical ne masque plus un échec Boolean par une concaténation ;
+- les regressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes`, `Acoustic skirt` et `Hollow cavity` sont verrouillées par des tests ;
 - tous les tests unitaires du socle passent ;
 - les chaînes inter-outils ciblées passent ;
 - `scripts/quality_gate.py` reste vert ;
@@ -651,7 +929,7 @@ La mission est validée seulement si :
 
 ---
 
-## 22. Risques de régression
+## 27. Risques de régression
 
 Les principaux risques sont :
 
@@ -674,7 +952,7 @@ Mesures prévues :
 
 ---
 
-## 23. Décision architecturale
+## 28. Décision architecturale
 
 La règle projet devient :
 

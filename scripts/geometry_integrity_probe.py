@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict, deque
 import json
 import math
+from pathlib import Path
+import tempfile
+import zipfile
 from typing import Any
 
 import numpy as np
@@ -25,6 +28,9 @@ from laserprog_studio.geometry_ops.acoustic_diffuser import AcousticDiffuserSett
 from laserprog_studio.planar_tools import VentFlareSide, VentPathDraft, VentSectionKind, make_locked_plane, make_vent_path_mesh
 from laserprog_studio.tooling.mechanical_motion.geometry import build_gear_mesh, merge_meshes
 from laserprog_studio.tooling.mechanical_motion.models import GearSpec
+from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
+from laserprog_studio.geometry_ops.image_mask_relief_builder import build_image_mask_relief
+from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
 
 
 def _area2(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -266,6 +272,104 @@ def _manifold_simplify_probe(mesh: Any, tolerances: tuple[float, ...]) -> dict[s
     return out
 
 
+def _write_probe_3mf(path: Path, *, unit: str = "millimeter") -> None:
+    xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<model unit="{unit}" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="1" y="0" z="0"/>
+          <vertex x="0" y="1" z="0"/>
+          <vertex x="0" y="0" z="1"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="1" v3="3"/>
+          <triangle v1="1" v2="2" v3="3"/>
+          <triangle v1="2" v2="0" v3="3"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>'''
+    content_types = '''<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>'''
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("3D/3dmodel.model", xml)
+
+
+def _mesh_bounds(mesh: Any) -> list[float]:
+    vertices = list(getattr(mesh, "vertices", []) or [])
+    if not vertices:
+        return [0.0] * 6
+    xs = [float(v[0]) for v in vertices]
+    ys = [float(v[1]) for v in vertices]
+    zs = [float(v[2]) for v in vertices]
+    return [min(xs), min(ys), min(zs), max(xs), max(ys), max(zs)]
+
+
+def _layflat_workmesh(mesh: Any, name: str) -> WorkMesh:
+    src = MeshObject(
+        name=name,
+        vertices=list(getattr(mesh, "vertices", []) or []),
+        triangles=list(getattr(mesh, "triangles", []) or []),
+        color=str(getattr(mesh, "color", "#B8B8B8") or "#B8B8B8"),
+    )
+    piece = merge_group([src], 1)
+    orient_piece_flat(piece)
+    return WorkMesh(name=name + "_layflat", vertices=list(piece.vertices), triangles=list(piece.triangles), color=piece.color)
+
+
+def _relief_probe() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    try:
+        text_mesh = make_text_relief_mesh(
+            text="AB8",
+            anchor_point=(0.0, 0.0, 0.0),
+            normal=(0.0, 0.0, 1.0),
+            size_mm=12.0,
+            depth_mm=1.5,
+            font_family="VTK VectorText",
+        )
+        out["text"] = audit_mesh(text_mesh)
+    except Exception as exc:
+        out["text"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    try:
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as td:
+            image_path = Path(td) / "mask.png"
+            image = Image.new("L", (12, 12), color=255)
+            for x in range(2, 10):
+                for y in range(2, 10):
+                    image.putpixel((x, y), 0 if (x + y) % 3 else 80)
+            image.save(image_path)
+            for binary in (False, True):
+                result = build_image_mask_relief(
+                    image_path,
+                    max_height_mm=2.0,
+                    pixel_size_mm=0.5,
+                    invert=False,
+                    binary=binary,
+                    max_grid_size=64,
+                )
+                mesh = result.mesh
+                out["image_binary" if binary else "image_grayscale"] = {
+                    "mesh": audit_mesh(mesh),
+                    "runtime_skip_merge": bool(getattr(mesh, "_lps_skip_boolean_merge", False)),
+                    "metadata_skip_merge": bool((getattr(mesh, "metadata", {}) or {}).get("boolean_skip_merge", False)),
+                }
+    except Exception as exc:
+        out["image"] = {"error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
 def main() -> int:
     try:
         import manifold3d as m3d
@@ -279,7 +383,19 @@ def main() -> int:
         }
     except Exception as exc:
         manifold_capabilities = {"error": f"{type(exc).__name__}: {exc}"}
-    report: dict[str, Any] = {"manifold": manifold_capabilities, "cases": {}, "simplify": {}, "inter_tool": {}}
+    report: dict[str, Any] = {"manifold": manifold_capabilities, "cases": {}, "simplify": {}, "inter_tool": {}, "formats": {}, "relief": {}}
+
+    with tempfile.TemporaryDirectory() as td:
+        inch_path = Path(td) / "unit_inch.3mf"
+        _write_probe_3mf(inch_path, unit="inch")
+        imported = read_3mf_meshes(inch_path)
+        report["formats"]["3mf_unit_inch"] = {
+            "mesh_count": len(imported),
+            "bounds": _mesh_bounds(imported[0]) if imported else None,
+            "expected_extent_mm": 25.4,
+        }
+
+    report["relief"] = _relief_probe()
 
     primitives = {
         "primitive_box": build_box(_req("box")),
@@ -291,6 +407,25 @@ def main() -> int:
     }
     for name, mesh in primitives.items():
         report["cases"][name] = audit_mesh(mesh)
+
+    # Lay Flat grouping currently concatenates overlapping parts instead of performing
+    # a volumetric union. Probe the semantic difference explicitly.
+    overlap_a = build_box(_req("box", pos_x=-5.0))
+    overlap_b = build_box(_req("box", pos_x=5.0))
+    overlap_piece = merge_group(
+        [
+            MeshObject("overlap_a", list(overlap_a.vertices), list(overlap_a.triangles), overlap_a.color),
+            MeshObject("overlap_b", list(overlap_b.vertices), list(overlap_b.triangles), overlap_b.color),
+        ],
+        1,
+    )
+    overlap_merged = WorkMesh(
+        name="layflat_overlap_concat",
+        vertices=list(overlap_piece.vertices),
+        triangles=list(overlap_piece.triangles),
+        color=overlap_piece.color,
+    )
+    report["inter_tool"]["layflat_overlap_concat"] = audit_mesh(overlap_merged)
 
     acoustic = build_acoustic_diffuser(AcousticDiffuserSettings(quality=32))
     for i, mesh in enumerate(acoustic.meshes):
@@ -313,6 +448,10 @@ def main() -> int:
         "mesh": audit_mesh(hollow.meshes[0]) if hollow.ok and hollow.meshes else None,
     }
     if hollow.ok and hollow.meshes:
+        report["inter_tool"]["hollow_to_layflat"] = {
+            "source": audit_mesh(hollow.meshes[0]),
+            "layflat": audit_mesh(_layflat_workmesh(hollow.meshes[0], "hollow_box")),
+        }
         try:
             from laserprog_studio.boolean_ops import boolean_difference
             cavity_probe = build_box(_req("box", size_x=4.0, size_y=4.0, size_z=4.0))

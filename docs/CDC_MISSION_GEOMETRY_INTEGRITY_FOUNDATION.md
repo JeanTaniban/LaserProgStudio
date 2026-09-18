@@ -278,6 +278,125 @@ Aucune logique générique ne doit faire `extract_largest()` ou supprimer automa
 
 ---
 
+## 7.1 ShellNestingTree — topologie sémantique partagée
+
+Le socle commun doit construire une représentation sémantique des coques fermées, réutilisée par tous les outils consommateurs.
+
+Une liste de composantes connexes n’est pas suffisante. Le même WorkMesh peut contenir :
+
+- une coque extérieure ;
+- une coque de cavité ;
+- une île de matière à l’intérieur d’une cavité ;
+- une nouvelle cavité à l’intérieur de cette île ;
+- plusieurs régions matérielles indépendantes.
+
+Créer un rapport commun équivalent à :
+
+```python
+ShellNestingTree(
+    shells=(
+        Shell(id=0, parent=None, depth=0, semantic=MATERIAL_BOUNDARY, ...),
+        Shell(id=1, parent=0, depth=1, semantic=CAVITY_BOUNDARY, ...),
+        Shell(id=2, parent=1, depth=2, semantic=MATERIAL_BOUNDARY, ...),
+    ),
+    material_regions=(...),
+)
+```
+
+Règle de parité :
+
+- profondeur paire : frontière de matière ;
+- profondeur impaire : frontière de vide/cavité.
+
+L’orientation signée reste une information importante, mais elle ne doit pas être la seule source de vérité : un import miroir peut inverser toutes les orientations sans changer la relation matière/cavité.
+
+Le calcul de nesting doit utiliser :
+
+1. bbox comme filtre rapide ;
+2. un point intérieur robuste par shell, pas seulement le centroïde surfacique ;
+3. un test de containment commun et déterministe ;
+4. le plus petit parent contenant comme parent direct ;
+5. des diagnostics explicites pour les shells tangents/intersectants/ambigus.
+
+Cette structure devient la source commune pour :
+
+- `Cavity Volume` ;
+- `Separate mesh` ;
+- validation Hollow ;
+- préservation des cavités dans Lay Flat ;
+- normalisation de winding ;
+- calcul du volume matériel ;
+- validation sémantique avant/après une opération.
+
+### Cavity Volume doit consommer le socle
+
+Le code actuel considère la plus grosse shell comme extérieure puis additionne toutes les autres shells contenues comme des cavités.
+
+Ce modèle échoue dès qu’une île de matière est imbriquée dans une cavité.
+
+Fixture mesuré :
+
+- enveloppe extérieure : `8000 mm³` ;
+- vide intérieur : `4096 mm³` ;
+- île de matière dans ce vide : `64 mm³`.
+
+Valeurs physiques attendues :
+
+- matière : `8000 - 4096 + 64 = 3968 mm³` ;
+- cavité nette : `4096 - 64 = 4032 mm³`.
+
+Résultat actuel :
+
+- matière estimée : `3840 mm³` ;
+- cavité : `4160 mm³`.
+
+L’outil compte donc l’île de matière comme du vide.
+
+Décision : `Cavity Volume` ne doit plus maintenir sa propre logique de nesting. Il consomme `ShellNestingTree` et applique la parité commune.
+
+---
+
+## 7.2 CandidateGeometry vs géométrie persistée
+
+Le fait qu’un outil produise un candidat imparfait ne doit pas l’obliger à recopier les réparations génériques du socle.
+
+Le runtime distingue conceptuellement :
+
+```text
+Tool output = CandidateGeometry
+        ↓
+GeometryMutationGateway
+        ↓
+audit + adaptations autorisées + semantic delta
+        ↓
+CertifiedGeometry / WorkMesh persistant
+```
+
+Exemple Extrude Down :
+
+- les cas box/cylinder/sphere testés sont fermés par indices ;
+- ils contiennent respectivement des conflits de winding ;
+- Manifold direct les refuse ;
+- le fallback de winding actuel les rend Manifold-valides.
+
+Ce comportement générique ne doit pas être recodé dans Extrude Down.
+
+Le contrat de l’outil autorise par exemple `CONSISTENT_WINDING`. Le gateway applique cette adaptation, recertifie, puis **persiste la représentation certifiée**, afin que l’outil suivant ne doive pas refaire exactement la même correction.
+
+À l’inverse :
+
+- Hollow est déjà valide directement ;
+- le gateway doit donc conserver sa représentation et sa sémantique de cavité ;
+- aucune adaptation plus agressive n’est autorisée « par habitude ».
+
+Règle :
+
+> Une adaptation générique peut corriger la représentation d’un candidat, mais la géométrie persistée après commit doit satisfaire directement son contrat enregistré.
+
+Cela permet de centraliser les réparations sans conserver éternellement des meshes qui ne fonctionnent qu’après un hack implicite au prochain outil.
+
+---
+
 ## 8. Architecture logicielle cible
 
 ### 8.1 Couche pure
@@ -630,6 +749,26 @@ Responsable du calcul de coque.
 Le socle certifie la sortie **sans perdre la relation extérieur/cavité**.
 
 Une préparation Boolean ne doit jamais réorienter toutes les shells vers un volume positif. Le test de référence `hollow_box` devient un test de sémantique volumique : volume avant préparation, volume du PreparedSolid et résultat Boolean doivent représenter la même quantité de matière à tolérance définie.
+
+### Extrude Down
+
+Les probes sur box, cylinder et sphere montrent un pattern stable :
+
+- sortie indexée fermée ;
+- zéro arête frontière ;
+- mais conflits d’orientation ;
+- Manifold direct : `NotManifold` ;
+- préparation actuelle après propagation de winding : `NoError`.
+
+Le problème appartient donc au contrat commun de représentation, pas à une raison pour ajouter un validateur privé supplémentaire dans Extrude Down.
+
+Décision cible :
+
+- Extrude Down déclare `GeometryMutation.REBUILD` + sortie `SOLID` ;
+- son profil autorise `CONSISTENT_WINDING` ;
+- le gateway certifie et canonicalise avant commit ;
+- le WorkMesh persistant doit ensuite être DIRECT_CERTIFIED ;
+- les trous des sections extrudées restent des trous : la triangulation contrainte déjà utilisée doit être verrouillée par tests.
 
 ### Split
 
@@ -1426,6 +1565,8 @@ La mission est validée seulement si :
 - une Boolean avec un cutter entièrement contenu dans une cavité reste neutre ;
 - un Boolean chaîné ne crée pas de triangles dégénérés à cause d’une conversion intermédiaire de précision insuffisante ;
 - `Separate mesh` préserve les cavity shells à l’intérieur de leur material region ;
+- Cavity Volume utilise la même ShellNestingTree que Separate/Hollow et respecte la parité matière-vide sur des imbrications de profondeur >= 3 ;
+- Extrude Down ne persiste plus une sortie NotManifold qui dépend d’un futur prétraitement implicite ;
 - Lay Flat préserve la sémantique volumique des pièces et ne transforme jamais une assembly en pseudo-union ;
 - les unités 3MF sont normalisées en millimètres avant création des WorkMesh ;
 - Import et Save/Load conservent le contrat ;

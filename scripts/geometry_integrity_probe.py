@@ -13,6 +13,7 @@ from pathlib import Path
 import tempfile
 import zipfile
 from typing import Any
+from dataclasses import asdict
 
 import numpy as np
 
@@ -555,7 +556,7 @@ def main() -> int:
                 optional_backends=False,
             )
             report["inter_tool"]["hollow_to_repair"] = {
-                "repair_report": dict(repair_report.__dict__),
+                "repair_report": asdict(repair_report),
                 "source": audit_mesh(hollow_mesh),
                 "result": audit_mesh(repaired_hollow),
             }
@@ -573,6 +574,15 @@ def main() -> int:
             report["inter_tool"]["hollow_to_split"] = {
                 "piece_count": len(split_hollow),
                 "pieces": [audit_mesh(piece) for piece in split_hollow],
+            }
+            split_hollow_oblique = split_mesh_by_plane(
+                hollow_mesh,
+                origin=(1.5, 0.0, 0.0),
+                normal=(1.0, 1.0, 0.35),
+            )
+            report["inter_tool"]["hollow_to_split_oblique"] = {
+                "piece_count": len(split_hollow_oblique),
+                "pieces": [audit_mesh(piece) for piece in split_hollow_oblique],
             }
         except Exception as exc:
             report["inter_tool"]["hollow_to_split"] = {

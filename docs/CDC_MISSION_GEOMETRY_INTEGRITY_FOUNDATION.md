@@ -644,6 +644,14 @@ Un `SOLID` doit contenir uniquement la géométrie appartenant au solide.
 
 Les contrats géométriques et informations indispensables doivent être enregistrés dans `mesh.metadata`.
 
+Le corpus runtime montre que la persistance géométrique brute est saine sur le Hollow de référence :
+
+- `.lpsproj` Save → Reload conserve exactement 16 vertices, 24 triangles et ~`2568.509979 mm³` ;
+- export 3MF → réimport conserve 16 vertices, 24 triangles et ~`2568.509880 mm³`, l’écart étant celui de la sérialisation décimale ;
+- dans les deux cas, la cavité reste correctement orientée avant passage dans la préparation Boolean.
+
+Conclusion : la corruption Hollow observée n’est pas introduite par le format projet ou le 3MF sur ce cas. Elle est introduite par les étapes de normalisation postérieures.
+
 Les attributs runtime privés de type `_lps_*` ne peuvent pas être la seule source d’une règle qui doit survivre à Save/Load.
 
 Le rechargement d’un projet doit donner exactement le même rôle géométrique et les mêmes règles applicables.
@@ -698,7 +706,9 @@ Critère P0 : aucune opération qui reçoit un solide DIRECT_CERTIFIED ne peut c
 1. Simplify qui ouvre/déconnecte silencieusement une pièce ;
 2. Mechanical compound qui remplace un échec Boolean par une concaténation ;
 3. Lay Flat qui présente une concaténation chevauchante comme une fusion ;
-4. Vent qui stocke des anchors de mesure dans les vertices du solide.
+4. `Separate mesh` qui transforme une cavity shell en seconde pièce ;
+5. sorties Boolean chaînées converties en `to_mesh()` qui peuvent introduire des triangles dégénérés ;
+6. Vent qui stocke des anchors de mesure dans les vertices du solide.
 
 ### P2 — interopérabilité / persistance
 
@@ -787,6 +797,23 @@ Tests mesurés positifs à conserver comme non-régression :
 - Hollow cube, coupe oblique/off-center : ~`1407.149 + 1161.361 = 2568.510 mm³`, soit conservation du volume source.
 
 Le chemin normal de Split est donc sain sur ces cas ; le risque se concentre sur le fallback et les géométries pathologiques.
+
+### Separate mesh
+
+L’action Boolean `Separate mesh` appelle actuellement `split_disconnected_mesh()`, qui sépare les triangles par connectivité d’indices.
+
+Cette définition est incorrecte pour un solide creux : la coque extérieure et la coque de cavité sont volontairement déconnectées par indices, mais appartiennent à **la même pièce matérielle**.
+
+Reproduction sur le Hollow cube :
+
+- entrée : 1 WorkMesh, volume matière ~`2568.51 mm³` ;
+- sortie actuelle : 2 WorkMesh ;
+- partie 1 : coque extérieure, `+8000 mm³` ;
+- partie 2 : coque intérieure, `-5431.49 mm³` avant normalisation, ensuite `+5431.49 mm³` via la préparation courante.
+
+L’action détruit donc la sémantique « cavité » et transforme le vide intérieur en une seconde pièce.
+
+La future séparation doit opérer sur des **material regions** certifiées, pas sur les surface shells brutes. Une cavity shell ne doit jamais devenir une pièce autonome par défaut.
 
 ### Hollow
 
@@ -999,6 +1026,23 @@ La conservation de volume est exacte à l’arrondi du probe. Le chemin `clip_cl
 
 Le rapport de réparation actuel paraît donc « sans changement structurel » alors que la matière est profondément modifiée.
 
+### Separate mesh
+
+Le Hollow cube est séparé par l’action actuelle en deux shells autonomes :
+
+- extérieure : 8 vertices, 12 triangles, volume `+8000 mm³` ;
+- intérieure : 8 vertices, 12 triangles, volume signé `-5431.490021 mm³`.
+
+La préparation Boolean de la seconde shell la retourne ensuite en `+5431.490021 mm³`. Le problème est donc double : séparation sémantiquement incorrecte puis normalisation qui transforme le vide en matière.
+
+### Persistance Hollow
+
+- projet `.lpsproj` : volume direct avant/après exactement ~`2568.509979 mm³` ;
+- roundtrip 3MF : volume direct ~`2568.509880 mm³` ;
+- nombre de shells, vertices et triangles conservé.
+
+Ces frontières ne sont pas la source de la corruption P0 observée.
+
 ### Lay Flat
 
 Le test `Hollow → Lay Flat` confirme une perte de cavité :
@@ -1032,6 +1076,29 @@ Cas mesurés :
 - image binaire : fermée par indices mais 36 conflits d’orientation ; Manifold direct refuse, puis la préparation actuelle réussit après réorientation.
 
 Ce dernier cas justifie un pipeline multi-candidats, mais pas un prétraitement systématique.
+
+### Boolean chaîné et précision de conversion
+
+Le compound mécanique a permis d’isoler un défaut de conversion intermédiaire.
+
+Union des trois Manifolds conservée entièrement dans le kernel puis convertie une seule fois :
+
+- `to_mesh()` final : 3648 triangles, 0 triangle de surface nulle ;
+- `to_mesh64()` final : 3648 triangles, 0 triangle de surface nulle.
+
+Chaînage qui reproduit l’architecture LaserProg actuelle, avec conversion/reconstruction entre les unions :
+
+- intermédiaire `to_mesh()` : première union propre, puis résultat final 3968 triangles dont **112 triangles de surface nulle** ;
+- intermédiaire `to_mesh64()` : résultat final 3648 triangles, **0 triangle dégénéré**, geometric contract valide.
+
+La cause n’est donc pas l’opération Manifold elle-même mais la perte de précision de l’intermédiaire 32 bits réinjecté dans l’union suivante.
+
+Décision cible :
+
+- utiliser `to_mesh64()` lorsqu’il est disponible pour les sorties canoniques destinées à être réutilisées géométriquement ;
+- pour les opérations Boolean multi-opérandes, préférer conserver l’accumulation dans Manifold et ne convertir qu’une seule fois en sortie ;
+- n’utiliser `to_mesh()` 32 bits que pour un besoin explicitement compatible avec cette perte de précision ;
+- verrouiller le cas des 112 triangles dégénérés par une régression.
 
 ### Mechanical compound
 
@@ -1203,6 +1270,24 @@ Dès qu’un candidat satisfait **à la fois** KernelCompatibility et SemanticVa
 
 Le PreparedSolid est éphémère et ne remplace pas le WorkMesh de l’utilisateur avant réussite de l’opération.
 
+### Conversion canonique de sortie
+
+Le résultat du kernel reste en double précision aussi longtemps que possible.
+
+Règle cible :
+
+```text
+Manifold operation(s)
+→ validate kernel result
+→ to_mesh64() si disponible
+→ WorkMesh canonical
+→ post-audit
+```
+
+Pour un Boolean à plusieurs opérandes, les unions/différences sont accumulées dans le kernel avant la conversion finale lorsqu’il n’existe pas de nécessité métier de matérialiser un intermédiaire.
+
+Un WorkMesh canonique réutilisé comme opérande doit pouvoir être reconstruit sans créer de nouvelles faces dégénérées.
+
 ---
 
 ## 27. Critères de validation
@@ -1218,6 +1303,8 @@ La mission est validée seulement si :
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;
 - une Boolean avec un cutter entièrement contenu dans une cavité reste neutre ;
+- un Boolean chaîné ne crée pas de triangles dégénérés à cause d’une conversion intermédiaire de précision insuffisante ;
+- `Separate mesh` préserve les cavity shells à l’intérieur de leur material region ;
 - Lay Flat préserve la sémantique volumique des pièces et ne transforme jamais une assembly en pseudo-union ;
 - les unités 3MF sont normalisées en millimètres avant création des WorkMesh ;
 - Import et Save/Load conservent le contrat ;

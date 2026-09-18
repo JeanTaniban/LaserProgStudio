@@ -768,6 +768,14 @@ Test mesuré : deux cubes de 20 mm se chevauchant de 10 mm sont concaténés en 
 - fallback de Boolean vers concaténation ;
 - résultat présenté comme pièce rigide fusionnée.
 
+Test forcé du fallback sur le même compound :
+
+- vraie union Boolean : 1 shell/région connectée, volume ~`23716.26 mm³` ;
+- fallback concaténé : 3 shells/corps, volume ~`25989.87 mm³` ;
+- le fallback reste pourtant Manifold `NoError`.
+
+L’écart (~`2273.61 mm³`) correspond notamment aux volumes d’intersection comptés plusieurs fois. Le flag `mechanical_compound_union_fallback` ne suffit donc pas : un résultat qui prétend être une pièce rigide unique doit échouer si l’union volumique échoue, ou rester explicitement une assembly de scène.
+
 ### Split
 
 - fallback `clip()` pouvant produire des surfaces ouvertes si `clip_closed_surface()` échoue ;
@@ -816,6 +824,19 @@ Décision cible : ne pas institutionnaliser ces marqueurs spécifiques par outil
 - doit convertir systématiquement l’unité source vers le millimètre interne.
 
 Test mesuré : un 3MF déclaré `unit="inch"` contenant une géométrie de taille 1 est actuellement importé avec une étendue de `1.0 mm` au lieu de `25.4 mm`. Le lecteur ignore donc aujourd’hui l’unité du modèle.
+
+Le reader cible normalise tous les formats Core 3MF vers l’unité interne millimètre :
+
+| unité 3MF | facteur vers mm |
+|---|---:|
+| `micron` | 0.001 |
+| `millimeter` | 1 |
+| `centimeter` | 10 |
+| `inch` | 25.4 |
+| `foot` | 304.8 |
+| `meter` | 1000 |
+
+L’absence d’attribut `unit` utilise le défaut 3MF : millimètre.
 
 ---
 
@@ -1012,6 +1033,38 @@ Cas mesurés :
 
 Ce dernier cas justifie un pipeline multi-candidats, mais pas un prétraitement systématique.
 
+### Mechanical compound
+
+Le fallback concaténé a été forcé en faisant échouer `boolean_union` :
+
+- union réelle : 3968 triangles, 1 composante indexée, 1 Manifold, ~`23716.2607 mm³` ;
+- concat fallback : 4704 triangles, 3 composantes indexées, 3 Manifolds, ~`25989.8716 mm³` ;
+- les deux sont `Manifold NoError`.
+
+La validité kernel ne peut donc pas prouver qu’un résultat respecte l’intention « rigid fused part ».
+
+### Reproductibilité Linux / Windows
+
+Le même probe a été exécuté avec :
+
+- Python `3.12.10` sur les deux OS ;
+- `manifold3d 3.5.3` ;
+- `numpy 2.0.1` ;
+- `pyvista 0.46.5` ;
+- `vtk 9.4.2` ;
+- `shapely 2.1.2`.
+
+Les invariants Manifold et la majorité des générateurs sont équivalents à la précision numérique attendue.
+
+En revanche, VTK/PyVista `decimate_pro` produit des maillages différents selon l’OS pour la même sphère :
+
+- réduction 90 % : volume Linux ~`3900.3124`, Windows ~`3879.2543 mm³` ;
+- réduction 95 % : volume Linux ~`3562.8022`, Windows ~`3606.3610 mm³`.
+
+La divergence persiste avec la même version exacte de Python. Le backend VTK de Simplify n’est donc pas un générateur de géométrie cross-platform byte/deterministic.
+
+Conclusion : les tests cross-platform doivent vérifier les **contrats et tolérances de fidélité**, pas exiger des vertices identiques pour un backend non déterministe. Si une géométrie persistante doit être exactement reproductible, elle doit utiliser un backend déterministe validé ou être générée sur l’environnement Windows de référence.
+
 ### Baseline suite complète
 
 Le quality gate statique atteint pytest, mais la suite complète actuelle n’est pas verte :
@@ -1048,7 +1101,7 @@ Exemples réels :
 
 ---
 
-## 24. Reproductibilité du kernel
+## 24. Reproductibilité des backends
 
 La version de `manifold3d` ne doit plus rester non bornée.
 
@@ -1062,6 +1115,30 @@ Toute certification persistée contient :
 - version du schéma.
 
 Un certificat produit avec une version de kernel différente est requalifié paresseusement avant un usage sensible.
+
+### Deux niveaux de reproductibilité
+
+**Déterminisme strict** : même entrée + mêmes paramètres + même environnement de référence ⇒ même topologie et même géométrie dans les tolérances numériques du backend.
+
+**Équivalence contractuelle cross-platform** : Linux/Windows peuvent produire des triangulations différentes pour certains algorithmes natifs, mais doivent respecter les mêmes invariants :
+
+- rôle ;
+- fermeture ;
+- nombre de régions autorisées ;
+- conservation de volume dans la tolérance du profil ;
+- Hausdorff/fidélité dans la tolérance ;
+- absence de nouveaux fragments ;
+- compatibilité kernel.
+
+Les fingerprints de géométrie ne sont comparés à l’identique que pour un output réellement déterministe. Ils servent toujours à détecter qu’un mesh local a changé, mais ne constituent pas une promesse d’identité cross-platform.
+
+### Environnement de référence
+
+La release Windows est l’environnement de fabrication de référence.
+
+La CI Linux reste obligatoire pour les contrats purs et l’architecture, mais ne doit pas définir seule la géométrie attendue d’un backend VTK non déterministe.
+
+Le workflow d’audit exécute donc le corpus géométrique sur Windows et Linux avec les mêmes versions de dépendances.
 
 ---
 
@@ -1148,6 +1225,8 @@ La mission est validée seulement si :
 - les données de mesure Vent ne sont plus dans le mesh solide ;
 - Lay Flat ne présente plus une concaténation comme une union ;
 - Mechanical ne masque plus un échec Boolean par une concaténation ;
+- les tests géométriques ciblés passent sur Windows et Linux avec les mêmes versions de dépendances ;
+- les backends non déterministes sont contrôlés par des métriques de fidélité, pas par une identité arbitraire de vertices ;
 - les régressions reproduites `Simplify dumbbell`, `Vent → Hollow`, `touching cubes point/edge/face`, `Acoustic skirt`, `Hollow cavity`, `Hollow → Lay Flat`, `Lay Flat overlap`, `3MF inch` et `3MF mirrored instance` sont verrouillées par des tests ;
 - tous les tests unitaires du socle passent ;
 - les chaînes inter-outils ciblées passent ;

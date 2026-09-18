@@ -31,6 +31,8 @@ from laserprog_studio.tooling.mechanical_motion.models import GearSpec
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
 from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
+from laserprog_studio.io.project_file import save_project, load_project
+from laserprog_studio.project import ProjectStore
 
 
 def _area2(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -232,6 +234,12 @@ def _touching_boxes() -> WorkMesh:
     return merge_meshes((a, b), name="two_boxes_point_contact")
 
 
+def _touching_pair(offset: tuple[float, float, float], name: str) -> WorkMesh:
+    a = build_box(_req("box", pos_x=0.0, pos_y=0.0, pos_z=0.0))
+    b = build_box(_req("box", pos_x=float(offset[0]), pos_y=float(offset[1]), pos_z=float(offset[2])))
+    return merge_meshes((a, b), name=name)
+
+
 def _dumbbell() -> WorkMesh:
     from laserprog_studio.boolean_ops import boolean_union
     left = build_box(_req("box", size_x=20.0, size_y=20.0, size_z=20.0, pos_x=-15.0))
@@ -360,13 +368,38 @@ def _relief_probe() -> dict[str, Any]:
                     max_grid_size=64,
                 )
                 mesh = result.mesh
-                out["image_binary" if binary else "image_grayscale"] = {
+                key = "image_binary" if binary else "image_grayscale"
+                out[key] = {
                     "mesh": audit_mesh(mesh),
                     "runtime_skip_merge": bool(getattr(mesh, "_lps_skip_boolean_merge", False)),
                     "metadata_skip_merge": bool((getattr(mesh, "metadata", {}) or {}).get("boolean_skip_merge", False)),
+                    "project_roundtrip": _project_roundtrip_probe(mesh),
                 }
     except Exception as exc:
         out["image"] = {"error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
+def _project_roundtrip_probe(mesh: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    try:
+        project = ProjectStore.new_empty(scene_name="probe")
+        project.active_model_store.set_meshes([mesh])
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "probe.lpsproj"
+            save_project(project, path)
+            loaded = load_project(path)
+            loaded_mesh = loaded.active_model_store.committed_meshes[0]
+            out = {
+                "source_runtime_skip_merge": bool(getattr(mesh, "_lps_skip_boolean_merge", False)),
+                "source_metadata_skip_merge": bool((getattr(mesh, "metadata", {}) or {}).get("boolean_skip_merge", False)),
+                "loaded_runtime_skip_merge": bool(getattr(loaded_mesh, "_lps_skip_boolean_merge", False)),
+                "loaded_metadata_skip_merge": bool((getattr(loaded_mesh, "metadata", {}) or {}).get("boolean_skip_merge", False)),
+                "source_audit": audit_mesh(mesh),
+                "loaded_audit": audit_mesh(loaded_mesh),
+            }
+    except Exception as exc:
+        out = {"error": f"{type(exc).__name__}: {exc}"}
     return out
 
 
@@ -404,6 +437,8 @@ def main() -> int:
         "primitive_sphere": build_sphere(_req("sphere")),
         "mechanical_gear_bore": build_gear_mesh(GearSpec(name="probe gear", teeth=24, module_mm=2.0, thickness_mm=6.0, bore_diameter_mm=5.0)),
         "touching_boxes_indexed_distinct": _touching_boxes(),
+        "touching_boxes_edge_contact": _touching_pair((20.0, 20.0, 0.0), "two_boxes_edge_contact"),
+        "touching_boxes_face_contact": _touching_pair((20.0, 0.0, 0.0), "two_boxes_face_contact"),
     }
     for name, mesh in primitives.items():
         report["cases"][name] = audit_mesh(mesh)

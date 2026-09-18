@@ -32,7 +32,7 @@ from laserprog_studio.geometry_ops.acoustic_diffuser import AcousticDiffuserSett
 from laserprog_studio.planar_tools import VentFlareSide, VentPathDraft, VentSectionKind, make_locked_plane, make_vent_path_mesh
 from laserprog_studio.tooling.mechanical_motion.geometry import build_gear_mesh, merge_meshes
 from laserprog_studio.tooling.mechanical_motion.models import GearSpec
-from laserprog_studio.tooling.mechanical_motion.compound_geometry import build_compound_shaft_mesh
+from laserprog_studio.tooling.mechanical_motion.compound_geometry import build_compound_shaft_mesh, _build_axial_hub_mesh
 from laserprog_studio.tooling.mechanical_motion.plane import MechanicalWorkPlane
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
 from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
@@ -551,11 +551,60 @@ def main() -> int:
             compound_fallback = build_compound_shaft_mesh(compound_gears, plane=plane, name="compound_fallback")
         finally:
             _bool_mod.boolean_union = original_union
-        report["inter_tool"]["mechanical_compound_union_vs_fallback"] = {
+        mechanical_report = {
             "union": audit_mesh(compound_union),
             "fallback": audit_mesh(compound_fallback),
             "fallback_marker": bool((getattr(compound_fallback, "metadata", {}) or {}).get("mechanical_compound_union_fallback", False)),
         }
+
+        # Isolate Manifold output conversion precision. Production currently
+        # converts canonical boolean results with to_mesh() even though inputs use Mesh64.
+        try:
+            import manifold3d as m3d
+            import numpy as _np
+            from laserprog_studio.boolean_ops import _construct_valid_manifold
+
+            sorted_gears = tuple(sorted(compound_gears, key=lambda g: sum(float(g.center[i]) * float(plane.normal[i]) for i in range(3))))
+            raw_parts = [build_gear_mesh(g, plane=plane) for g in sorted_gears]
+            raw_parts.append(_build_axial_hub_mesh(sorted_gears, plane=plane, name="probe hub"))
+            raw_manifolds = []
+            for idx, part in enumerate(raw_parts):
+                manifold_value, _prepared, _attempts = _construct_valid_manifold(
+                    part,
+                    label=f"mechanical_raw_{idx}",
+                    np=_np,
+                    m3d=m3d,
+                )
+                raw_manifolds.append(manifold_value)
+            raw_union = raw_manifolds[0]
+            for value in raw_manifolds[1:]:
+                raw_union = raw_union.add(value) if hasattr(raw_union, "add") else (raw_union + value)
+
+            conversions = {}
+            for method_name in ("to_mesh", "to_mesh64"):
+                method = getattr(raw_union, method_name, None)
+                if not callable(method):
+                    conversions[method_name] = {"available": False}
+                    continue
+                converted = method()
+                vp = _np.asarray(converted.vert_properties, dtype=float)
+                tp = _np.asarray(converted.tri_verts, dtype=_np.int32)
+                wm = WorkMesh(
+                    name=f"mechanical_raw_{method_name}",
+                    vertices=[tuple(map(float, row[:3])) for row in vp],
+                    triangles=[tuple(map(int, row[:3])) for row in tp],
+                )
+                conversions[method_name] = {
+                    "available": True,
+                    "audit": audit_mesh(wm),
+                }
+            mechanical_report["canonical_conversion"] = conversions
+        except Exception as exc:
+            mechanical_report["canonical_conversion"] = {
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        report["inter_tool"]["mechanical_compound_union_vs_fallback"] = mechanical_report
     except Exception as exc:
         report["inter_tool"]["mechanical_compound_union_vs_fallback"] = {
             "error": f"{type(exc).__name__}: {exc}",

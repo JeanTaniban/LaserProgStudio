@@ -32,6 +32,8 @@ from laserprog_studio.geometry_ops.acoustic_diffuser import AcousticDiffuserSett
 from laserprog_studio.planar_tools import VentFlareSide, VentPathDraft, VentSectionKind, make_locked_plane, make_vent_path_mesh
 from laserprog_studio.tooling.mechanical_motion.geometry import build_gear_mesh, merge_meshes
 from laserprog_studio.tooling.mechanical_motion.models import GearSpec
+from laserprog_studio.tooling.mechanical_motion.compound_geometry import build_compound_shaft_mesh
+from laserprog_studio.tooling.mechanical_motion.plane import MechanicalWorkPlane
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
 from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
@@ -513,6 +515,51 @@ def main() -> int:
             report["formats"][f"example_{example_name}"] = {
                 "error": f"{type(exc).__name__}: {exc}"
             }
+
+    # Mechanical compound comparison: real boolean union vs forced fallback concat.
+    try:
+        plane = MechanicalWorkPlane.horizontal_at((0.0, 0.0, 0.0))
+        compound_gears = (
+            GearSpec(
+                name="compound A",
+                center=(0.0, 0.0, 3.0),
+                teeth=24,
+                module_mm=2.0,
+                thickness_mm=6.0,
+                bore_diameter_mm=5.0,
+                shaft_id="shaft_probe",
+                stage_index=0,
+            ),
+            GearSpec(
+                name="compound B",
+                center=(0.0, 0.0, 10.0),
+                teeth=36,
+                module_mm=1.5,
+                thickness_mm=6.0,
+                bore_diameter_mm=5.0,
+                shaft_id="shaft_probe",
+                stage_index=1,
+            ),
+        )
+        compound_union = build_compound_shaft_mesh(compound_gears, plane=plane, name="compound_union")
+        import laserprog_studio.boolean_ops as _bool_mod
+        original_union = _bool_mod.boolean_union
+        try:
+            def _forced_union_failure(*_args: Any, **_kwargs: Any):
+                raise RuntimeError("forced compound boolean failure")
+            _bool_mod.boolean_union = _forced_union_failure
+            compound_fallback = build_compound_shaft_mesh(compound_gears, plane=plane, name="compound_fallback")
+        finally:
+            _bool_mod.boolean_union = original_union
+        report["inter_tool"]["mechanical_compound_union_vs_fallback"] = {
+            "union": audit_mesh(compound_union),
+            "fallback": audit_mesh(compound_fallback),
+            "fallback_marker": bool((getattr(compound_fallback, "metadata", {}) or {}).get("mechanical_compound_union_fallback", False)),
+        }
+    except Exception as exc:
+        report["inter_tool"]["mechanical_compound_union_vs_fallback"] = {
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
     primitives = {
         "primitive_box": build_box(_req("box")),

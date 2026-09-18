@@ -38,6 +38,8 @@ from laserprog_studio.tooling.folding.geometry import arbitrary_face_plane, defo
 from laserprog_studio.tooling.folding.models import FoldingCurve, FoldingMode, FoldingDeformationMode
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
 from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
+from laserprog_studio.geometry_ops.cavity_volume import measure_cavity_volume
+from laserprog_studio.geometry_ops.extrude_down import extrude_mesh_down
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
 from laserprog_studio.io.project_file import save_project, load_project
 from laserprog_studio.project import ProjectStore
@@ -353,6 +355,48 @@ def _mirror_x(mesh: Any, name: str) -> WorkMesh:
     )
 
 
+def _cavity_measure_probe() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    outer = build_box(_req("box", size_x=20.0, size_y=20.0, size_z=20.0))
+    cavity = build_box(_req("box", size_x=16.0, size_y=16.0, size_z=16.0))
+    cavity.triangles = [(a, c, b) for a, b, c in cavity.triangles]
+    island = build_box(_req("box", size_x=4.0, size_y=4.0, size_z=4.0))
+    nested = merge_meshes((outer, cavity, island), name="nested_material_cavity_island")
+    report = measure_cavity_volume(nested)
+    out["nested_parity"] = {
+        "reported_cavity_mm3": float(report.cavity_volume_mm3),
+        "reported_material_mm3": float(report.solid_volume_liters_estimate * 1_000_000.0),
+        "expected_cavity_mm3": float((16.0 ** 3) - (4.0 ** 3)),
+        "expected_material_mm3": float((20.0 ** 3) - (16.0 ** 3) + (4.0 ** 3)),
+        "cavity_count": int(report.cavity_count),
+        "shell_count": int(report.shell_count),
+        "warning": report.warning,
+        "mesh": audit_mesh(nested),
+    }
+    return out
+
+
+def _extrude_down_probe() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    cases = {
+        "box_half": build_box(_req("box", size_x=20.0, size_y=20.0, size_z=20.0, pos_z=10.0)),
+        "sphere_half": build_sphere(_req("sphere", size_x=20.0, size_y=20.0, size_z=20.0, pos_z=10.0)),
+        "cylinder_half": build_cylinder(_req("cylinder", size_x=20.0, size_y=20.0, size_z=20.0, pos_z=10.0)),
+    }
+    for name, source in cases.items():
+        try:
+            mesh, stats, warning = extrude_mesh_down(source, plane_z=10.0, ground_z=0.0)
+            out[name] = {
+                "warning": warning,
+                "supports": int(stats.supports),
+                "source": audit_mesh(source),
+                "result": audit_mesh(mesh) if mesh is not None else None,
+            }
+        except Exception as exc:
+            out[name] = {"error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
 def _folding_solid_probe() -> dict[str, Any]:
     out: dict[str, Any] = {}
     source = build_box(
@@ -579,6 +623,8 @@ def main() -> int:
         )
 
     report["relief"] = _relief_probe()
+    report["inter_tool"]["cavity_measure"] = _cavity_measure_probe()
+    report["inter_tool"]["extrude_down"] = _extrude_down_probe()
     report["inter_tool"]["folding_closed_solid"] = _folding_solid_probe()
 
     for example_name in ("box.3mf", "layflat_parts.3mf"):
@@ -793,6 +839,15 @@ def main() -> int:
         }
         report["inter_tool"]["hollow_3mf_roundtrip"] = _three_mf_roundtrip_probe(hollow_mesh)
         report["inter_tool"]["hollow_project_roundtrip"] = _project_roundtrip_probe(hollow_mesh)
+        cavity_report = measure_cavity_volume(hollow_mesh)
+        report["inter_tool"]["hollow_cavity_measure"] = {
+            "cavity_volume_mm3": float(cavity_report.cavity_volume_mm3),
+            "outer_volume_mm3": float(cavity_report.outer_volume_mm3),
+            "material_estimate_mm3": float(cavity_report.solid_volume_liters_estimate * 1_000_000.0),
+            "cavity_count": int(cavity_report.cavity_count),
+            "shell_count": int(cavity_report.shell_count),
+            "warning": cavity_report.warning,
+        }
         try:
             from laserprog_studio.boolean_ops import split_disconnected_mesh
             separated_hollow = split_disconnected_mesh(hollow_mesh)

@@ -234,6 +234,38 @@ def _dumbbell() -> WorkMesh:
     return boolean_union(boolean_union(left, bridge), right)
 
 
+def _manifold_simplify_probe(mesh: Any, tolerances: tuple[float, ...]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    try:
+        import manifold3d as m3d
+        vertices = np.asarray(getattr(mesh, "vertices", []) or [], dtype=np.float64)
+        triangles = np.asarray(getattr(mesh, "triangles", []) or [], dtype=np.int32)
+        base = construct_manifold(
+            m3d,
+            vertices=vertices[:, :3],
+            triangles=triangles,
+            merge=False,
+            prefer_64bit=True,
+        ).manifold
+        for tolerance in tolerances:
+            try:
+                simplified = base.simplify(float(tolerance))
+                mesh_out = simplified.to_mesh64() if hasattr(simplified, "to_mesh64") else simplified.to_mesh()
+                verts = np.asarray(mesh_out.vert_properties, dtype=float)
+                tris = np.asarray(mesh_out.tri_verts, dtype=np.int32)
+                wm = WorkMesh(
+                    name=f"{getattr(mesh, 'name', 'mesh')} manifold_simplify_{tolerance:g}",
+                    vertices=[tuple(map(float, row[:3])) for row in verts],
+                    triangles=[tuple(map(int, row[:3])) for row in tris],
+                )
+                out[f"{tolerance:g}"] = audit_mesh(wm)
+            except Exception as exc:
+                out[f"{tolerance:g}"] = {"error": f"{type(exc).__name__}: {exc}"}
+    except Exception as exc:
+        out["setup_error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
 def main() -> int:
     try:
         import manifold3d as m3d
@@ -280,6 +312,20 @@ def main() -> int:
         "errors": list(hollow.errors),
         "mesh": audit_mesh(hollow.meshes[0]) if hollow.ok and hollow.meshes else None,
     }
+    if hollow.ok and hollow.meshes:
+        try:
+            from laserprog_studio.boolean_ops import boolean_subtract
+            cavity_probe = build_box(_req("box", size_x=4.0, size_y=4.0, size_z=4.0))
+            hollow_cut = boolean_subtract(hollow.meshes[0], cavity_probe, cutter_margin_mm=0.0)
+            report["inter_tool"]["hollow_boolean_cavity_probe"] = {
+                "ok": True,
+                "result": audit_mesh(hollow_cut),
+            }
+        except Exception as exc:
+            report["inter_tool"]["hollow_boolean_cavity_probe"] = {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     hollow_vent = hollow_selected_meshes([vent], [0], thickness=1.0)
     report["inter_tool"]["vent_to_hollow"] = {
@@ -290,6 +336,10 @@ def main() -> int:
     try:
         dumbbell = _dumbbell()
         report["cases"]["dumbbell_source"] = audit_mesh(dumbbell)
+        report["simplify"]["manifold_dumbbell"] = _manifold_simplify_probe(
+            dumbbell,
+            (0.0, 0.01, 0.05, 0.10, 0.25, 0.50, 1.0),
+        )
         for preserve in (True, False):
             for reduction in (0.50, 0.75, 0.90, 0.95):
                 out, error = simplify_mesh(dumbbell, reduction, preserve_topology=preserve)

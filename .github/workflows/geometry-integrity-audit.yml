@@ -46,7 +46,8 @@ jobs:
       - name: Run geometry integrity runtime probe
         if: always()
         run: |
-          python scripts/geometry_integrity_probe.py | tee geometry-integrity-probe.json
+          python scripts/geometry_integrity_probe.py > geometry-integrity-probe.json
+          cat geometry-integrity-probe.json
 
       - name: Upload probe
         if: always()

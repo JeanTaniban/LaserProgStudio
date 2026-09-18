@@ -720,7 +720,7 @@ Critère P0 : aucune opération qui reçoit un solide DIRECT_CERTIFIED ne peut c
 ### P3 — durcissement
 
 1. fallback Split ouvert ;
-2. cas Hollow auto-intersectants ;
+2. Hollow : self-intersections, local feature size et changements de connectivité de cavité ;
 3. corpus legacy réel ;
 4. performance et cache du GeometryChangeSet.
 
@@ -821,7 +821,12 @@ La future séparation doit opérer sur des **material regions** certifiées, pas
 - absence de certification finale ;
 - la préparation Boolean actuelle inverse la sémantique de la coque de cavité ;
 - une différence avec un cutter entièrement situé dans le vide intérieur modifie pourtant la pièce et produit 4 shells, avec triangles dupliqués après soudure ;
-- le même défaut est reproduit sur une forme concave « haltère » : volume direct ~`2827.14 mm³`, préparation Boolean actuelle ~`29180.06 mm³`.
+- le même défaut est reproduit sur une forme concave « haltère » : volume direct ~`2827.14 mm³`, préparation Boolean actuelle ~`29180.06 mm³` ;
+- la limite d’épaisseur repose aujourd’hui sur la bbox globale et ne détecte pas les cols/features localement plus fins.
+
+Le fixture haltère contient un col carré de `0.6 × 0.6 mm`. Une cavité avec une paroi strictement supérieure à `0.3 mm` ne peut plus traverser ce col. Pourtant les épaisseurs `0.50`, `1.0`, `2.0` et `4.0 mm` sont acceptées et conservent une seule inner shell connectée.
+
+La préflight Hollow cible doit donc inclure une estimation de **local feature size / local clearance**, puis vérifier après génération que la topologie de cavité est compatible avec l’épaisseur demandée.
 
 ### Repair Mesh
 
@@ -965,6 +970,22 @@ Un test Boolean supplémentaire place un cube de 4 mm entièrement **dans la cav
 - 12 triangles dupliqués après soudure géométrique.
 
 Le nouveau pipeline doit donc certifier DIRECT avant toute orientation et verrouiller la conservation de la sémantique volumique.
+
+### Hollow — épaisseur locale
+
+Un fixture concave possède deux volumes de 20 mm reliés par un col carré de `0.6 mm`.
+
+Résultats Hollow :
+
+- `0.25 mm` : accepté, cavity shell connectée ; ce passage est encore géométriquement possible ;
+- `0.50 mm` : accepté, cavity shell toujours connectée ;
+- `1.00 mm` : accepté, cavity shell toujours connectée ;
+- `2.00 mm` : accepté, cavity shell toujours connectée ;
+- `4.00 mm` : accepté, cavity shell toujours connectée.
+
+À partir de `0.30 mm`, un offset intérieur uniforme ne peut plus laisser un canal traversant dans un col de `0.60 mm`. Le fait que l’algorithme conserve la connectivité d’origine montre que l’offset par normales de sommets ne respecte plus la sémantique d’épaisseur locale.
+
+Le contrôle `thickness < 0.45 * min(bbox_dimensions)` n’est donc pas suffisant.
 
 ### Acoustic Diffuser
 
@@ -1302,6 +1323,7 @@ La mission est validée seulement si :
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;
+- Hollow refuse ou reconstruit proprement les épaisseurs incompatibles avec la local feature size, au lieu de conserver artificiellement une cavité traversante ;
 - une Boolean avec un cutter entièrement contenu dans une cavité reste neutre ;
 - un Boolean chaîné ne crée pas de triangles dégénérés à cause d’une conversion intermédiaire de précision insuffisante ;
 - `Separate mesh` préserve les cavity shells à l’intérieur de leur material region ;

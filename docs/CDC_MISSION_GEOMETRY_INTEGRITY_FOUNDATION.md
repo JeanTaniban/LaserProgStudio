@@ -115,6 +115,63 @@ Le contrat décrit aussi la nature de la transformation.
 
 Cette information permet d’éviter de refaire des contrôles coûteux lorsqu’ils n’ont aucun intérêt.
 
+### 4.3 Contrat AFFINE détaillé
+
+`AFFINE` ne signifie pas « toute transformation conserve automatiquement le certificat ».
+
+Le gateway classe la matrice 3×3 par déterminant et conditionnement :
+
+#### Rigid / direct positive affine
+
+Pour translation, rotation et scale inversible de déterminant strictement positif :
+
+- connectivité indexée inchangée ;
+- fermeture/topologie des shells inchangée ;
+- nesting topologique conservé ;
+- certificat structurel/topologique réutilisable ;
+- métriques géométriques, fingerprint, bounds, volume et local feature size sont recalculés ;
+- un scale non uniforme peut modifier les contraintes métier d’épaisseur, même s’il préserve la topologie.
+
+Test box `20×10×6` :
+
+- source : `1200 mm³` ;
+- translation + rotation 33° : `1200 mm³`, DIRECT_CERTIFIED ;
+- scale `(2, 0.5, 1.5)`, det `1.5` : `1800 mm³`, DIRECT_CERTIFIED.
+
+#### Orientation-reversing affine
+
+Si `det(A) < 0` :
+
+- la connectivité reste valide ;
+- la sémantique d’orientation est inversée globalement ;
+- le certificat d’orientation/volume signé est invalidé ;
+- le candidat passe par `GLOBAL_WINDING_FLIP` si son rôle exige un solide matériel positif.
+
+Test mirror X : Manifold direct `NoError`, volume `-1200 mm³`, puis `+1200 mm³` après flip global.
+
+#### Affine quasi singulière / singulière
+
+Un kernel peut accepter une géométrie numériquement presque aplatie.
+
+Test scale X `1e-12` :
+
+- Manifold direct `NoError` ;
+- volume seulement `1.2e-9 mm³`.
+
+Scale X `0` :
+
+- status Manifold peut encore être `NoError` ;
+- mais résultat vide/invalide, volume `0`, 8 triangles de surface nulle dans le WorkMesh source transformé.
+
+Le profil `MANUFACTURING_SOLID` doit donc imposer indépendamment du kernel :
+
+- déterminant/conditionnement minimal de la transformation lorsqu’il est connu ;
+- volume matériel minimal relatif/absolu ;
+- surface/triangle non dégénéré ;
+- dimensions locales minimales cohérentes avec les tolérances numériques.
+
+Le statut `NoError` n’est jamais suffisant pour accepter un solide presque singulier.
+
 ---
 
 ## 5. Profils de validation communs
@@ -924,7 +981,7 @@ Critère P0 : aucune opération qui reçoit un solide DIRECT_CERTIFIED ne peut c
 
 ### P3 — durcissement
 
-1. fallback Split ouvert ;
+1. reconstruction robuste du fallback Split ouvert désormais reproduit ;
 2. Hollow : self-intersections, local feature size et changements de connectivité de cavité ;
 3. corpus legacy réel ;
 4. performance et cache du GeometryChangeSet.
@@ -993,8 +1050,17 @@ L’écart (~`2273.61 mm³`) correspond notamment aux volumes d’intersection c
 
 ### Split
 
-- fallback `clip()` pouvant produire des surfaces ouvertes si `clip_closed_surface()` échoue ;
+- fallback `clip()` produit effectivement des surfaces ouvertes ;
 - aucune postcondition commune ne bloque encore automatiquement ce fallback.
+
+Reproduction directe du chemin de secours sur un cube fermé :
+
+- source : 12 triangles, 0 boundary edge, Manifold `NoError` ;
+- `poly.clip(...).triangulate().clean()` : 14 triangles ;
+- **8 boundary edges** ;
+- Manifold direct et après merge : `NotManifold`.
+
+Ce fallback ne doit plus être committable comme `SOLID`. Il peut éventuellement servir de preview de diagnostic, mais Apply doit soit reconstruire/capper correctement, soit échouer sans modifier la scène.
 
 Tests mesurés positifs à conserver comme non-régression :
 
@@ -1035,9 +1101,23 @@ La préflight Hollow cible doit donc inclure une estimation de **local feature s
 
 ### Repair Mesh
 
+Repair Mesh contient à la fois une capacité utile et une normalisation dangereuse.
+
+Cas positif mesuré :
+
+- cube avec 2 triangles retirés ;
+- entrée : 10 triangles, 4 boundary edges, Manifold `NotManifold` ;
+- `repair_work_mesh(fill_holes=True)` : 12 triangles, 0 boundary edge, Manifold `NoError`, volume `8000 mm³`.
+
+Cette capacité de fermeture doit être conservée.
+
+Cas destructif mesuré :
+
 - `repair_work_mesh()` réutilise actuellement le même helper d’orientation que Boolean ;
 - un Hollow parfaitement fermé et sans face dégénérée est transformé de ~`2568.51` à ~`13431.49 mm³` même avec `fill_holes=False`, `remove_tiny_faces=False` et backends optionnels désactivés ;
 - le rapport actuel ne détecte pas cette altération car il mesure essentiellement fermeture/compteurs, pas la sémantique volumique.
+
+Décision : Repair doit construire plusieurs `RepairCandidate`, mesurer leur delta sémantique, puis accepter uniquement un candidat qui améliore les défauts ciblés sans violer le contrat matière/cavité. Un mesh déjà DIRECT_CERTIFIED ne doit jamais être « réparé » par défaut.
 
 ### Folding
 
@@ -1627,6 +1707,9 @@ La mission est validée seulement si :
 - les deux contrats OperationResult actuels sont désambiguïsés avant l’introduction définitive de GeometryChangeSet ;
 - Boolean applique le même profil à tous ses opérandes, quelle que soit leur provenance ;
 - un mesh directement certifiable n’est pas modifié inutilement par la préparation ;
+- une transformation affine réutilise uniquement les couches de certificat mathématiquement invariantes ;
+- les transformations quasi singulières sont rejetées par le profil manufacturing même si Manifold retourne `NoError` ;
+- le fallback Split ouvert ne peut jamais être commité comme `SOLID` ;
 - le volume/sémantique de cavité d’un Hollow reste invariant à travers la préparation Boolean ;
 - Hollow refuse ou reconstruit proprement les épaisseurs incompatibles avec la local feature size, au lieu de conserver artificiellement une cavité traversante ;
 - une Boolean avec un cutter entièrement contenu dans une cavité reste neutre ;

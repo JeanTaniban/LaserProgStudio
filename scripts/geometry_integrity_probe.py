@@ -34,6 +34,8 @@ from laserprog_studio.tooling.mechanical_motion.geometry import build_gear_mesh,
 from laserprog_studio.tooling.mechanical_motion.models import GearSpec
 from laserprog_studio.tooling.mechanical_motion.compound_geometry import build_compound_shaft_mesh, _build_axial_hub_mesh
 from laserprog_studio.tooling.mechanical_motion.plane import MechanicalWorkPlane
+from laserprog_studio.tooling.folding.geometry import arbitrary_face_plane, deform_mesh
+from laserprog_studio.tooling.folding.models import FoldingCurve, FoldingMode, FoldingDeformationMode
 from laserprog_studio.fabrication.layflat_core import MeshObject, merge_group, orient_piece_flat, read_3mf_meshes
 from laserprog_studio.geometry_ops.image_mask_relief_builder import build_mask_relief_mesh
 from laserprog_studio.geometry_ops.text_relief import make_text_relief_mesh
@@ -351,6 +353,48 @@ def _mirror_x(mesh: Any, name: str) -> WorkMesh:
     )
 
 
+def _folding_solid_probe() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    source = build_box(
+        _req(
+            "box",
+            size_x=20.0,
+            size_y=4.0,
+            size_z=1.0,
+            pos_x=5.0,
+            pos_y=0.0,
+            pos_z=0.5,
+        )
+    )
+    source.name = "folding_closed_box"
+    plane = arbitrary_face_plane((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+    out["source"] = audit_mesh(source)
+    cases = [
+        ("uniform_90", 90.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
+        ("uniform_180", 180.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
+        ("uniform_270", 270.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
+        ("uniform_450", 450.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
+        ("uniform_720", 720.0, (0.0, 0.0, 0.0), FoldingDeformationMode.UNIFORM.value),
+        ("preserve_180", 180.0, (0.0, 0.0, 0.0), FoldingDeformationMode.PRESERVE_STRUCTURE.value),
+        ("s_curve", 120.0, (100.0, -150.0, 80.0), FoldingDeformationMode.PRESERVE_STRUCTURE.value),
+    ]
+    for name, angle, shape, mode in cases:
+        curve = FoldingCurve(
+            start=(0.0, 0.0, 0.0),
+            end=(10.0, 0.0, 0.0),
+            mode=FoldingMode.LIVING_HINGE.value,
+            fold_angle_deg=angle,
+            shape_angles_deg=shape,
+            deformation_mode=mode,
+        )
+        try:
+            folded = deform_mesh(source, plane, curve)
+            out[name] = audit_mesh(folded)
+        except Exception as exc:
+            out[name] = {"error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
 def _relief_probe() -> dict[str, Any]:
     out: dict[str, Any] = {}
     try:
@@ -519,6 +563,7 @@ def main() -> int:
         )
 
     report["relief"] = _relief_probe()
+    report["inter_tool"]["folding_closed_solid"] = _folding_solid_probe()
 
     for example_name in ("box.3mf", "layflat_parts.3mf"):
         example_path = Path("examples") / example_name

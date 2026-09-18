@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict, deque
 import json
 import math
+import platform
+import sys
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 import tempfile
 import zipfile
@@ -416,10 +419,16 @@ def _project_roundtrip_probe(mesh: Any) -> dict[str, Any]:
 
 
 def main() -> int:
+    def _pkg_version(name: str) -> str:
+        try:
+            return str(importlib_metadata.version(name))
+        except Exception:
+            return "unknown"
+
     try:
         import manifold3d as m3d
         manifold_capabilities = {
-            "version": str(getattr(m3d, "__version__", "unknown")),
+            "version": _pkg_version("manifold3d"),
             "has_mesh64": bool(hasattr(m3d, "Mesh64")),
             "manifold_methods": sorted(
                 name for name in ("simplify", "decompose", "refine", "volume", "surface_area")
@@ -428,7 +437,27 @@ def main() -> int:
         }
     except Exception as exc:
         manifold_capabilities = {"error": f"{type(exc).__name__}: {exc}"}
-    report: dict[str, Any] = {"manifold": manifold_capabilities, "cases": {}, "simplify": {}, "inter_tool": {}, "formats": {}, "relief": {}}
+    environment = {
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "python": sys.version,
+        "packages": {
+            "manifold3d": _pkg_version("manifold3d"),
+            "numpy": _pkg_version("numpy"),
+            "pyvista": _pkg_version("pyvista"),
+            "vtk": _pkg_version("vtk"),
+            "shapely": _pkg_version("shapely"),
+        },
+    }
+    report: dict[str, Any] = {
+        "environment": environment,
+        "manifold": manifold_capabilities,
+        "cases": {},
+        "simplify": {},
+        "inter_tool": {},
+        "formats": {},
+        "relief": {},
+    }
 
     with tempfile.TemporaryDirectory() as td:
         inch_path = Path(td) / "unit_inch.3mf"

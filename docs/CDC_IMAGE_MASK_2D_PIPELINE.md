@@ -439,6 +439,25 @@ Décision de migration recommandée :
 - stocker cette taille dans le document/import request ;
 - ensuite permettre 512/1024/2048 échantillons sans modifier cette taille.
 
+Comportement historique du dialogue utilisateur :
+
+```text
+legacy_scale = min(1, 512 / max(source_width_px, source_height_px))
+legacy_width_mm  = source_width_px  * legacy_scale * pixel_size_mm
+legacy_height_mm = source_height_px * legacy_scale * pixel_size_mm
+```
+
+avec `pixel_size_mm=1` par défaut.
+
+Exemple historique :
+
+- source 2048×1024 → grille 512×256 → environ **512×256 mm** ;
+- la branche sub-pixel, si elle applique naïvement 1 mm au pixel source, donnerait **2048×1024 mm**.
+
+Ce changement ×4 est incompatible avec une migration silencieuse. Le futur
+`MaskPhysicalSize` doit préserver la taille historique par défaut puis laisser
+l’utilisateur saisir explicitement sa largeur mécanique.
+
 ---
 
 ## 11. Résolution

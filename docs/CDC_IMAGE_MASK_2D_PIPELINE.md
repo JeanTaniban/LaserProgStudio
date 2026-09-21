@@ -1065,9 +1065,9 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 
 - [x] première Boolean ;
 - [x] Boolean chaînée ;
-- [ ] Save/Reload ;
+- [x] Save/Reload ;
 - [ ] Undo/Redo ;
-- [ ] export/réimport 3MF.
+- [x] export/réimport 3MF.
 
 ### Gate G4 — UX
 
@@ -1080,7 +1080,8 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 
 - [x] tests Linux ;
 - [x] tests Windows ;
-- [ ] adversarial corpus complet vert ;
+- [x] corpus adversarial synthétique actuel vert ;
+- [ ] corpus réel utilisateur vert ;
 - [ ] quality gate global du projet ;
 - [ ] test manuel Windows sur UI réelle.
 

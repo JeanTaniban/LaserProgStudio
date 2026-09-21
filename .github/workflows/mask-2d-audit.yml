@@ -11,7 +11,8 @@ on:
       - 'src/laserprog_studio/controllers/image_mask_import.py'
       - 'tests/test_image_mask_relief_import.py'
       - 'tests/test_mask_relief_boolean_merge_policy.py'
-      - 'tests/test_mask_subpixel_contour.py'
+      - 'tests/test_mask_subpixel_contour.py tests/test_mask_subpixel_edge_cases.py'
+      - 'tests/test_mask_subpixel_edge_cases.py'
       - '.github/workflows/mask-2d-audit.yml'
   workflow_dispatch:
 

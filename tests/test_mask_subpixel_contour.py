@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 import _path_setup  # noqa: F401
+from laserprog_studio.geometry_ops.image_mask_relief_loading import _otsu_threshold
 from laserprog_studio.geometry_ops.image_mask_relief_contour import (
     _ambiguous_case_pairs,
     _bilinear_sample,
@@ -42,3 +43,18 @@ def test_bilinear_sample_matches_continuous_scalar_field() -> None:
     assert _bilinear_sample(field, 1.0, 1.0) == 300.0
     assert abs(_bilinear_sample(field, 0.5, 0.5) - 150.0) <= 1.0e-12
     assert abs(_bilinear_sample(field, 0.25, 0.75) - 125.0) <= 1.0e-12
+
+
+def test_otsu_uses_midpoint_of_equal_optimum_plateau() -> None:
+    hist = [0] * 256
+    hist[0] = 100
+    hist[255] = 100
+    assert _otsu_threshold(hist) == 127
+
+
+def test_otsu_midpoint_avoids_dark_peak_bias_on_separated_bands() -> None:
+    hist = [0] * 256
+    hist[20] = 50
+    hist[220] = 50
+    value = _otsu_threshold(hist)
+    assert 119 <= value <= 121

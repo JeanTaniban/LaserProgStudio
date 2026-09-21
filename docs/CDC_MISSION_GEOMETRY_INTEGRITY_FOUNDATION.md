@@ -2445,3 +2445,285 @@ Ce bug est classé **P0-Persistence Safety**.
 3. réutiliser les blobs inchangés lorsqu’un format/version le permet ;
 4. ajouter des métriques de phase et un test de performance de non-régression.
 
+### 30.15 Objectif de performance et architecture de sauvegarde non bloquante
+
+L’objectif produit est désormais explicite :
+
+- **aucun freeze UI perceptible** pendant autosave ou save manuel ;
+- lancement d’un save depuis le thread UI : budget cible **< 20 ms** ;
+- aucune tranche de travail de sauvegarde exécutée sur le thread UI au-delà de **16 ms** ;
+- save/autosave courant : cible **< 1 s** ;
+- save lourd : cible **< 2 s** dans l’enveloppe projet supportée et avec cache chaud ;
+- au-delà, l’UI reste entièrement interactive et affiche une progression réelle ;
+- un autosave ne doit pas bloquer les opérations géométriques en arrière-plan.
+
+Le budget de 1–2 s porte sur une sauvegarde incrémentale normale. Un premier Save As d’un projet exceptionnellement volumineux peut être limité par le débit disque physique ; dans ce cas la contrainte absolue reste **zéro blocage UI** et une instrumentation claire.
+
+#### Pourquoi le thread actuel rame malgré l’arrière-plan
+
+Le code actuel exécute dans le worker :
+
+```python
+project_snapshot = copy.deepcopy(project)
+save_project_atomic(project_snapshot, ...)
+```
+
+Le deepcopy traverse de nombreuses listes/objets Python. Un thread Python séparé partage le GIL avec Qt ; déplacer ce travail dans `ThreadPoolExecutor` ne le rend donc pas gratuit pour le thread UI.
+
+Le probe a mesuré plus de 600 ms de deepcopy pour seulement 6 gros états Undo. Sur un projet utilisateur contenant de nombreuses scènes, historiques et gros meshes, plusieurs secondes voire dizaines de secondes sont cohérentes avec cette architecture.
+
+La cible n’est donc pas « ajouter davantage de threads », mais **supprimer presque tout le travail Python du chemin chaud de sauvegarde**.
+
+### 30.16 ProjectRevision — snapshot O(nombre d’objets), pas O(nombre de vertices)
+
+Le runtime maintient une révision monotone :
+
+```python
+ProjectRevision(
+    revision_id: int,
+    scenes: tuple[SceneRevision, ...],
+    geometry_refs: tuple[GeometryBlobRef, ...],
+    metadata_refs: ...,
+)
+```
+
+Une géométrie persistante certifiée reçoit un `geometry_hash` et une référence immuable vers son blob/cache.
+
+Créer la révision de sauvegarde ne copie **jamais** les tableaux de vertices/triangles.
+
+Le snapshot consiste seulement à copier :
+
+- IDs ;
+- références de blobs ;
+- metadata légères ;
+- graphe des scènes ;
+- références des restore points retenus.
+
+Budget attendu : millisecondes, indépendamment du nombre total de triangles inchangés.
+
+### 30.17 Blob encoding hors chemin Save
+
+Le coût d’encodage d’un mesh doit être payé lorsqu’une nouvelle géométrie apparaît, pas à chaque sauvegarde.
+
+Après commit via `GeometryMutationGateway` :
+
+```text
+new CertifiedGeometry
+    ↓
+geometry_hash
+    ↓
+BlobCache.lookup(hash)
+    ├─ hit  → rien à encoder
+    └─ miss → encode NPZ compressé en tâche persistence dédiée
+```
+
+Le blob cache peut être sur disque dans un répertoire applicatif temporaire/cache, indexé par hash.
+
+Le save normal devient ensuite essentiellement :
+
+```text
+freeze ProjectRevision légère
+→ écrire manifests JSON
+→ recopier les blobs déjà encodés et référencés
+→ atomic replace
+```
+
+Aucun recalcul Manifold, aucune conversion vertices Python→NumPy et aucune recompression des blobs inchangés pendant Save.
+
+Un projet non modifié géométriquement doit donc avoir un coût de sauvegarde proche du coût de copie disque des blobs + quelques manifests.
+
+### 30.18 PersistenceExecutor dédié
+
+Les sauvegardes ne doivent plus utiliser le même `BackgroundTaskManager(max_workers=1)` que les tâches géométriques.
+
+Créer :
+
+```text
+PersistenceExecutor
+    manual-save priority
+    autosave coalescing
+    one writer per target path
+```
+
+Règles :
+
+- executor dédié à la persistance ;
+- un Boolean/Hollow/Simplify ne doit jamais attendre qu’un autosave termine ;
+- plusieurs autosaves en attente sont coalescés : seule la dernière révision utile est écrite ;
+- un save manuel est prioritaire sur un autosave non commencé ;
+- si un autosave est déjà dans son replace final, le save manuel attend ce court commit au lieu de lancer deux writers concurrents ;
+- deux écritures ne modifient jamais simultanément le même fichier cible.
+
+### 30.19 Save manuel asynchrone et sémantique des révisions
+
+Le save manuel ne doit plus appeler `save_project_atomic()` directement depuis le thread Qt.
+
+Chemin cible :
+
+```text
+UI thread
+  ↓ <20 ms
+resolve path / capture revision N / schedule
+  ↓
+PersistenceExecutor
+  ↓
+write revision N
+  ↓
+Qt callback
+```
+
+Pendant l’écriture, l’utilisateur peut continuer à travailler.
+
+Si le projet change pendant le save :
+
+```text
+save_started_revision = N
+current_revision = N + 1
+```
+
+à la fin :
+
+- le fichier contient correctement N ;
+- `project_path` peut être mis à jour si le commit a réussi ;
+- **dirty reste True**, car N+1 n’a pas encore été sauvegardée.
+
+Le projet n’est marqué clean que si :
+
+```text
+saved_revision_id == current_revision_id
+```
+
+Cette règle évite de perdre silencieusement l’indicateur « modifications non sauvegardées » lorsqu’on édite pendant un save asynchrone.
+
+### 30.20 Autosave = journal de récupération minimal
+
+L’autosave n’a pas besoin de reconstruire un FULL_SAVE complet à chaque tick.
+
+Le mode recovery cible est incrémental :
+
+```text
+recovery manifest current revision
++
+new/changed blobs since previous recovery
+```
+
+Les blobs inchangés sont déjà présents dans le cache/recovery store et ne sont ni copiés ni recompressés à nouveau.
+
+Deux implémentations compatibles sont admises :
+
+#### Option A — recovery directory/store
+
+Un dossier interne de recovery contient :
+
+```text
+manifest.json
+geometry/<hash>.npz
+```
+
+Les updates sont atomiques au niveau manifest. C’est le chemin le plus rapide.
+
+#### Option B — SQLite/WAL recovery store
+
+Un fichier recovery SQLite contient manifests + blobs content-addressed, avec WAL et transactions courtes.
+
+Cette option est intéressante si le filesystem store devient difficile à gérer, mais ne doit être retenue qu’après benchmark et test de corruption.
+
+Le fichier utilisateur `.lpsproj` peut rester une archive portable ; le recovery interne n’a pas besoin d’utiliser exactement le même conteneur.
+
+### 30.21 Save manuel incrémental d’un fichier portable
+
+Un ZIP monolithique impose de recopier les membres vers un nouveau fichier pour conserver un replace atomique et éliminer les données mortes.
+
+Avec des blobs déjà compressés `ZIP_STORED`, cette copie est essentiellement I/O séquentielle et ne consomme presque pas de CPU.
+
+Optimisation supplémentaire :
+
+- si la plateforme/filesystem permet un format de package incrémental sûr, il peut être évalué ;
+- sinon on garde le ZIP réécrit atomiquement pour la simplicité et la robustesse.
+
+Le système ne doit **pas** revenir à l’append ZIP permanent, qui recréerait précisément les blobs morts signalés par l’utilisateur.
+
+### 30.22 Cache des blobs et mémoire
+
+Le cache ne doit pas doubler indéfiniment la RAM.
+
+Règles :
+
+- cache principal sur disque ;
+- RAM seulement pour petits manifests et blobs récemment produits ;
+- LRU/budget configurable ;
+- hash → chemin/cache entry ;
+- validation taille/hash à la lecture ;
+- nettoyage des blobs cache non référencés selon une politique indépendante du projet.
+
+Un WorkMesh peut conserver son `geometry_hash`, mais pas nécessairement les bytes NPZ complets en mémoire.
+
+### 30.23 Performance tests obligatoires
+
+Ajouter une suite dédiée `persistence-performance` avec au moins :
+
+1. projet courant de 1 gros mesh, cache chaud ;
+2. 50 meshes inchangés ;
+3. modification d’un seul mesh parmi 50 ;
+4. suppression de 49 meshes ;
+5. 50 restore points référençant majoritairement les mêmes blobs ;
+6. gros undo stack technique ;
+7. save manuel pendant édition continue ;
+8. autosave pendant une opération géométrique background ;
+9. Save As initial avec cache froid ;
+10. save répété sans modification ;
+11. recovery après crash simulé ;
+12. panne disque/replace simulée.
+
+Métriques :
+
+- UI scheduling latency ;
+- revision capture ms ;
+- changed blob encode ms ;
+- bytes réellement écrits ;
+- reused blob count ;
+- manifest write ms ;
+- atomic replace ms ;
+- end-to-end ms ;
+- max main-thread stall ;
+- CPU process ;
+- peak RSS ;
+- compression ratio.
+
+### 30.24 Budgets d’acceptation
+
+Pour l’enveloppe projet de référence définie par les benchmarks de release Windows :
+
+#### Autosave chaud
+
+- main-thread stall p95 < **16 ms** ;
+- scheduling < **20 ms** ;
+- aucun `deepcopy(ProjectStore)` ;
+- aucune recompression d’un blob inchangé ;
+- worker p95 < **1 s** ;
+- p99 < **2 s**.
+
+#### Save manuel chaud
+
+- dialogue/path exclus : scheduling < **20 ms** ;
+- fenêtre toujours interactive ;
+- worker p95 < **1 s** ;
+- p99 < **2 s** ;
+- save sans changement réencode **0 blob**.
+
+#### Save avec une géométrie modifiée
+
+- seule la géométrie modifiée est encodée ;
+- les autres blobs sont réutilisés ;
+- le coût doit être proportionnel au delta, pas à la taille historique du projet.
+
+#### Première sauvegarde / cache froid
+
+- zéro blocage UI ;
+- progression ;
+- aucune duplication de blobs ;
+- objectif < **2 s** pour l’enveloppe projet standard ;
+- les cas dépassant le débit physique du support sont tolérés uniquement si l’UI reste fluide.
+
+Ces budgets deviennent des critères de release, mesurés sous Windows avec le build distribué.
+

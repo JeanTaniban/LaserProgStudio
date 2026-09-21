@@ -166,6 +166,7 @@ def clear_mask_contour_caches() -> None:
 
     _cached_activity_field.cache_clear()
     _cached_raw_footprint_wkb.cache_clear()
+    _cached_smoothed_footprint_wkb.cache_clear()
 
 def _point_key(point: tuple[float, float]) -> tuple[float, float]:
     # Shared cell edges must polygonize to exactly the same endpoint.
@@ -544,6 +545,42 @@ def _safe_smooth_footprint(
     return reference, _report(reference, 0.0)
 
 
+@lru_cache(maxsize=24)
+def _cached_smoothed_footprint_wkb(
+    path_text: str,
+    mtime_ns: int,
+    file_size: int,
+    invert: bool,
+    max_grid_size: int,
+    threshold_byte: float,
+    physical_width_mm: float,
+    physical_height_mm: float,
+    sample_step_mm: float,
+    smooth: float,
+) -> tuple[bytes, MaskSmoothingReport]:
+    """Cache the exact safe footprint shown by Preview and consumed by Apply."""
+
+    from shapely import from_wkb, to_wkb
+
+    raw_wkb = _cached_raw_footprint_wkb(
+        path_text,
+        int(mtime_ns),
+        int(file_size),
+        bool(invert),
+        int(max_grid_size),
+        float(threshold_byte),
+        float(physical_width_mm),
+        float(physical_height_mm),
+    )
+    raw_geometry = from_wkb(raw_wkb)
+    geometry, report = _safe_smooth_footprint(
+        raw_geometry,
+        sample_step_mm=float(sample_step_mm),
+        smooth=float(smooth),
+    )
+    return bytes(to_wkb(geometry)), report
+
+
 def build_binary_mask_footprint(
     path: str | Path,
     *,
@@ -590,7 +627,7 @@ def build_binary_mask_footprint(
     from shapely import from_wkb
 
     path_text, mtime_ns, file_size = _source_cache_signature(path)
-    raw_wkb = _cached_raw_footprint_wkb(
+    smoothed_wkb, smoothing_report = _cached_smoothed_footprint_wkb(
         path_text,
         mtime_ns,
         file_size,
@@ -599,13 +636,10 @@ def build_binary_mask_footprint(
         float(threshold_byte),
         float(physical_width),
         float(physical_height),
+        float(max(step_x, step_y)),
+        float(smooth),
     )
-    geometry = from_wkb(raw_wkb)
-    geometry, smoothing_report = _safe_smooth_footprint(
-        geometry,
-        sample_step_mm=max(step_x, step_y),
-        smooth=float(smooth),
-    )
+    geometry = from_wkb(smoothed_wkb)
 
     return BinaryMaskFootprint(
         geometry=geometry,
@@ -630,5 +664,6 @@ __all__ = [
     "_ambiguous_case_pairs",
     "_bilinear_sample",
     "_topology_correspondence_safe",
+    "_cached_smoothed_footprint_wkb",
     "clear_mask_contour_caches",
 ]

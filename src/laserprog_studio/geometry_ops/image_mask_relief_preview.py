@@ -3,38 +3,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .image_mask_relief_contour import build_binary_mask_footprint
+from .image_mask_relief_contour import BinaryMaskFootprint, build_binary_mask_footprint
 from .image_mask_relief_loading import _resample_filter
 from .image_mask_relief_types import MaskPhysicalSize
 
 
-def render_mask_preview_image(
-    path: str | Path,
+def render_mask_footprint_image(
+    footprint: BinaryMaskFootprint,
     *,
-    invert: bool = False,
-    levels: float | None = 50.0,
     smooth: float = 35.0,
-    max_grid_size: int = 512,
     max_preview_size: tuple[int, int] = (380, 240),
-    physical_size: MaskPhysicalSize | None = None,
-    legacy_size_cap_px: int | None = None,
 ):
-    """Rasterize the exact vector footprint used by the binary 3D importer."""
+    """Rasterize an already computed vector footprint for the Qt preview."""
 
     from PIL import Image, ImageDraw
     from shapely.geometry import MultiPolygon, Polygon
 
-    footprint = build_binary_mask_footprint(
-        path,
-        pixel_size_mm=1.0,
-        invert=bool(invert),
-        binary_threshold=0.5,
-        levels=levels,
-        smooth=float(smooth),
-        max_grid_size=int(max_grid_size),
-        physical_size=physical_size,
-        legacy_size_cap_px=legacy_size_cap_px,
-    )
     rows = int(footprint.height)
     cols = int(footprint.width)
     max_w = max(1, int(max_preview_size[0]))
@@ -87,3 +71,64 @@ def render_mask_preview_image(
             resample = _resample_filter()
         preview.thumbnail((max_w, max_h), resample)
     return preview
+
+
+def build_mask_preview(
+    path: str | Path,
+    *,
+    invert: bool = False,
+    levels: float | None = 50.0,
+    smooth: float = 35.0,
+    max_grid_size: int = 512,
+    max_preview_size: tuple[int, int] = (380, 240),
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
+):
+    """Return (preview image, exact vector footprint used to render it)."""
+
+    footprint = build_binary_mask_footprint(
+        path,
+        pixel_size_mm=1.0,
+        invert=bool(invert),
+        binary_threshold=0.5,
+        levels=levels,
+        smooth=float(smooth),
+        max_grid_size=int(max_grid_size),
+        physical_size=physical_size,
+        legacy_size_cap_px=legacy_size_cap_px,
+    )
+    preview = render_mask_footprint_image(
+        footprint,
+        smooth=float(smooth),
+        max_preview_size=max_preview_size,
+    )
+    return preview, footprint
+
+
+def render_mask_preview_image(
+    path: str | Path,
+    *,
+    invert: bool = False,
+    levels: float | None = 50.0,
+    smooth: float = 35.0,
+    max_grid_size: int = 512,
+    max_preview_size: tuple[int, int] = (380, 240),
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
+):
+    """Rasterize the exact vector footprint used by the binary 3D importer."""
+
+    preview, _footprint = build_mask_preview(
+        path,
+        invert=bool(invert),
+        levels=levels,
+        smooth=float(smooth),
+        max_grid_size=int(max_grid_size),
+        max_preview_size=max_preview_size,
+        physical_size=physical_size,
+        legacy_size_cap_px=legacy_size_cap_px,
+    )
+    return preview
+
+
+__all__ = ["build_mask_preview", "render_mask_footprint_image", "render_mask_preview_image"]

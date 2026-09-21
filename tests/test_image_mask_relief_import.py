@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 import tempfile
 import unittest
 
@@ -9,6 +10,7 @@ from PIL import Image, ImageDraw
 
 import _path_setup  # noqa: F401
 from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh, render_mask_preview_image
+from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint
 from laserprog_studio.boolean_ops import is_closed_triangle_mesh
 
 
@@ -163,6 +165,102 @@ class ImageMaskReliefBinaryImportTest(unittest.TestCase):
             self.assertEqual(smoothed.stats.active_pixels, raw.stats.active_pixels)
             self.assertEqual(sorted({round(v[2], 6) for v in smoothed.mesh.vertices}), [0.0, 10.0])
             self.assertEqual(is_closed_triangle_mesh(smoothed.mesh.vertices, smoothed.mesh.triangles), (True, 0, 0))
+
+    def test_subpixel_circle_contour_is_not_pixel_staircase(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "circle_aa.png"
+            scale = 4
+            big = Image.new("L", (160 * scale, 160 * scale), 255)
+            draw = ImageDraw.Draw(big)
+            draw.ellipse((20 * scale, 20 * scale, 140 * scale, 140 * scale), fill=0)
+            big.resize((160, 160), Image.Resampling.LANCZOS).save(path)
+
+            footprint = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                levels=50,
+                smooth=0,
+                max_grid_size=0,
+            )
+            poly = footprint.geometry
+            self.assertEqual(poly.geom_type, "Polygon")
+            coords = list(poly.exterior.coords)
+            perimeter = 0.0
+            axis_length = 0.0
+            radial_sq = []
+            max_error = 0.0
+            for a, b in zip(coords, coords[1:]):
+                dx = float(b[0] - a[0])
+                dy = float(b[1] - a[1])
+                length = math.hypot(dx, dy)
+                perimeter += length
+                if abs(dx) <= 1e-12 or abs(dy) <= 1e-12:
+                    axis_length += length
+            for x, y in coords[:-1]:
+                error = abs(math.hypot(float(x), float(y)) - 60.0)
+                radial_sq.append(error * error)
+                max_error = max(max_error, error)
+            rms = math.sqrt(sum(radial_sq) / max(len(radial_sq), 1))
+
+            self.assertLess(axis_length / max(perimeter, 1e-12), 0.15)
+            self.assertLess(rms, 0.30)
+            self.assertLess(max_error, 0.60)
+
+    def test_smooth_preserves_holes_and_thin_feature_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "thin_features.png"
+            img = Image.new("L", (160, 160), 255)
+            draw = ImageDraw.Draw(img)
+            draw.line((12, 80, 148, 80), fill=0, width=2)
+            draw.line((80, 12, 80, 148), fill=0, width=2)
+            draw.ellipse((55, 55, 105, 105), outline=0, width=2)
+            img.save(path)
+
+            raw = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                levels=50,
+                smooth=0,
+                max_grid_size=0,
+            )
+            smoothed = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                levels=50,
+                smooth=100,
+                max_grid_size=0,
+            )
+
+            def signature(geometry):
+                polys = [geometry] if geometry.geom_type == "Polygon" else list(geometry.geoms)
+                return len(polys), tuple(sorted(len(poly.interiors) for poly in polys))
+
+            self.assertEqual(signature(smoothed.geometry), signature(raw.geometry))
+            self.assertLess(
+                abs(float(smoothed.geometry.area) - float(raw.geometry.area)),
+                max(float(raw.geometry.area) * 0.08, 1.0),
+            )
+
+    def test_downsample_preserves_source_physical_extent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "large_black.png"
+            Image.new("L", (512, 256), 0).save(path)
+
+            footprint = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                levels=50,
+                smooth=0,
+                max_grid_size=128,
+            )
+
+            self.assertTrue(footprint.downsampled)
+            self.assertEqual((footprint.width, footprint.height), (128, 64))
+            self.assertAlmostEqual(footprint.physical_width_mm, 512.0, places=6)
+            self.assertAlmostEqual(footprint.physical_height_mm, 256.0, places=6)
+            minx, miny, maxx, maxy = footprint.geometry.bounds
+            self.assertAlmostEqual(maxx - minx, 512.0, places=5)
+            self.assertAlmostEqual(maxy - miny, 256.0, places=5)
 
     def test_smart_import_treats_transparent_background_as_empty_white(self) -> None:
         with tempfile.TemporaryDirectory() as td:

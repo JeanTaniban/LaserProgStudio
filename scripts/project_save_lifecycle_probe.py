@@ -23,6 +23,7 @@ import numpy as np
 
 from laserprog_studio.domain.work_model import WorkMesh
 from laserprog_studio.io.project_file import save_project_atomic
+import laserprog_studio.io.project_file as project_file_module
 from laserprog_studio.project import ProjectStore
 
 
@@ -184,6 +185,37 @@ def _scenario_undo_only(root: Path) -> dict[str, object]:
     return {"with_undo": before, "without_undo": after}
 
 
+def _atomic_failure_probe(root: Path) -> dict[str, object]:
+    project = ProjectStore.new_empty(scene_name="main")
+    project.active_model_store.set_meshes([_heavy_mesh("atomic_failure", seed=777, vertex_count=2000, triangle_count=4000)])
+    original_path = root / "original.lpsproj"
+    target_path = root / "target.lpsproj"
+    project.project_path = original_path
+    project.mark_dirty()
+
+    original_replace = project_file_module.os.replace
+
+    def _fail_replace(_src, _dst):
+        raise OSError("synthetic replace failure")
+
+    project_file_module.os.replace = _fail_replace
+    error = None
+    try:
+        save_project_atomic(project, target_path, mark_clean=True)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+    finally:
+        project_file_module.os.replace = original_replace
+
+    return {
+        "error": error,
+        "project_dirty_after_failure": bool(project.dirty),
+        "project_path_after_failure": str(project.project_path) if project.project_path is not None else None,
+        "expected_original_path": str(original_path),
+        "target_exists": bool(target_path.exists()),
+    }
+
+
 def _compression_strategy_probe(root: Path) -> dict[str, object]:
     mesh = _heavy_mesh("compression_probe", seed=999, vertex_count=36000, triangle_count=72000)
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
@@ -269,6 +301,7 @@ def main() -> int:
             "removed_scene": _scenario_removed_scene(root),
             "undo_only": _scenario_undo_only(root),
             "compression_strategies": _compression_strategy_probe(root),
+            "atomic_failure": _atomic_failure_probe(root),
         }
 
     # Derived ratios make CI evidence easier to read.

@@ -2232,3 +2232,103 @@ La mission persistence est validée si :
 - save/load conserve exactement l’état courant et les restore points retenus ;
 - toutes les écritures restent atomiques.
 
+### 30.13 Résultats mesurés — rétention après suppression
+
+Un probe dédié a été exécuté sur Linux et Windows avec un mesh synthétique lourd déterministe.
+
+#### Suppression sans historique sémantique
+
+Après ajout puis suppression du mesh, sans restore point persistant :
+
+- Linux : fichier `749 bytes`, `0` NPZ, save ~`2.95 ms` ;
+- Windows : fichier `753 bytes`, `0` NPZ, save ~`7.29 ms`.
+
+Conclusion : le writer ZIP ne conserve pas de blob ancien par append. Un mesh réellement non référencé disparaît bien du fichier suivant.
+
+#### Suppression avec RestoreHistory
+
+Même scénario, mais un snapshot sémantique est créé avant la suppression :
+
+- scène courante : vide ;
+- 2 entrées d’historique ;
+- 2 snapshots logiques, dont 1 contient encore le gros mesh ;
+- archive : 1 NPZ sous `/snapshots/`.
+
+Résultats :
+
+- Linux : `933243 bytes`, save ~`315.95 ms` ;
+- Windows : `933243 bytes`, save ~`337.31 ms`.
+
+Le fichier est environ **1240× plus gros** que le projet vide uniquement parce que l’ancien restore point garde la géométrie supprimée.
+
+Ce comportement est aujourd’hui fonctionnellement intentionnel — le restore point doit pouvoir restaurer l’objet — mais son coût est caché et le stockage est très inefficace car chaque snapshot sérialise des WorkMesh complets.
+
+#### Prune de l’historique
+
+Après limitation de l’historique à la seule entrée post-delete et `prune_history()` :
+
+- Linux : `918 bytes`, aucun NPZ ;
+- Windows : `916 bytes`, aucun NPZ.
+
+Le gros mesh disparaît donc immédiatement du fichier lorsqu’aucun restore point retenu ne le référence.
+
+Cela valide la future stratégie mark-and-sweep.
+
+#### Suppression complète d’une scène
+
+Une scène lourde avec snapshot est créée puis supprimée du `ProjectStore`.
+
+Sauvegarde suivante :
+
+- Linux : `750 bytes` ;
+- Windows : `753 bytes` ;
+- aucun NPZ de l’ancienne scène.
+
+La suppression d’une scène entière est donc déjà correctement garbage-collectée par la reconstruction complète du ZIP.
+
+#### Undo RAM et autosave
+
+Scénario avec 6 états techniques d’undo lourds, scène courante vide.
+
+Le fichier sauvegardé reste petit :
+
+- Linux : `752 bytes` ;
+- Windows : `751 bytes`.
+
+Mais `copy.deepcopy(project)` coûte :
+
+- Linux avec undo : ~`672.53 ms` ;
+- Linux sans undo : ~`0.082 ms` ;
+- Windows avec undo : ~`612.16 ms` ;
+- Windows sans undo : ~`0.089 ms`.
+
+Soit un facteur supérieur à **6900×** sur ce fixture.
+
+Conclusion : l’undo technique n’alourdit pas le fichier final, mais il peut alourdir massivement la phase de capture de l’autosave actuel.
+
+Le changement `RECOVERY_SAVE + ProjectPersistenceSnapshot` est donc un besoin mesuré, pas seulement une optimisation théorique.
+
+### 30.14 Priorités persistence
+
+#### P0-Persistence — corriger le coût caché
+
+1. remplacer `copy.deepcopy(project)` de l’autosave par `ProjectPersistenceSnapshot(mode=RECOVERY_SAVE)` ;
+2. exclure explicitement undo/redo, restore history, previews et caches du recovery ;
+3. ajouter un diagnostic de taille RestoreHistory dans l’UI/log ;
+4. empêcher une sauvegarde de recomprimer inutilement plusieurs copies identiques d’un même mesh.
+
+#### P1-Persistence — format dédupliqué
+
+1. introduire le blob store content-addressed ;
+2. snapshots = manifests/références, pas copies complètes ;
+3. mark-and-sweep à chaque FULL_SAVE ;
+4. politique RestoreHistory bornée par stockage ;
+5. checkpoints épinglés explicites.
+
+#### P2-Persistence — performances
+
+1. supprimer la double compression NPZ + outer ZIP ;
+2. benchmarker les stratégies de compression sur Windows ;
+3. réutiliser les blobs inchangés lorsqu’un format/version le permet ;
+4. ajouter des métriques de phase et un test de performance de non-régression.
+

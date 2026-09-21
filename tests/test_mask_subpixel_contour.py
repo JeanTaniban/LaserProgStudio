@@ -9,6 +9,7 @@ from laserprog_studio.geometry_ops.image_mask_relief_loading import _otsu_thresh
 from laserprog_studio.geometry_ops.image_mask_relief_contour import (
     _ambiguous_case_pairs,
     _bilinear_sample,
+    _topology_correspondence_safe,
     _cached_activity_field,
     _cached_raw_footprint_wkb,
     build_binary_mask_footprint,
@@ -127,4 +128,15 @@ def test_mask_contour_cache_invalidates_when_source_file_changes(tmp_path) -> No
     second = _cached_activity_field.cache_info()
 
     assert second.misses >= first.misses + 1
+
+def test_topology_correspondence_rejects_relocated_hole_with_same_counts() -> None:
+    from shapely.geometry import Polygon
+
+    shell = [(0, 0), (20, 0), (20, 20), (0, 20)]
+    reference = Polygon(shell, [[(3, 3), (7, 3), (7, 7), (3, 7)]])
+    relocated = Polygon(shell, [[(13, 13), (17, 13), (17, 17), (13, 17)]])
+    nearby = Polygon(shell, [[(3.2, 3.1), (7.0, 3.1), (7.0, 7.0), (3.2, 7.0)]])
+
+    assert _topology_correspondence_safe(reference, relocated) is False
+    assert _topology_correspondence_safe(reference, nearby) is True
 

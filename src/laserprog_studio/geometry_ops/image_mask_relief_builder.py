@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .image_mask_relief_heightfield import _build_grayscale_heightfield_mesh
-from .image_mask_relief_types import MaskReliefResult
+from .image_mask_relief_types import MaskPhysicalSize, MaskReliefResult
 from .image_mask_relief_vector import _build_binary_vector_mesh
 
 
@@ -21,6 +21,8 @@ def build_mask_relief_mesh(
     color: str = "#8E8E8E",
     levels: float | None = None,
     smooth: float = 0.0,
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
 ) -> MaskReliefResult:
     """Convert a PNG/JPG mask to a closed 3D mesh.
 
@@ -45,6 +47,8 @@ def build_mask_relief_mesh(
             color=color,
             levels=levels,
             smooth=float(smooth),
+            physical_size=physical_size,
+            legacy_size_cap_px=legacy_size_cap_px,
         )
     return _build_grayscale_heightfield_mesh(
         path,

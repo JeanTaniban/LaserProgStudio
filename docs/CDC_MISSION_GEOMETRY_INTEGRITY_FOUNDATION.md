@@ -1284,6 +1284,13 @@ Décision cible : ne pas institutionnaliser ces marqueurs spécifiques par outil
 
 #### Masque 2D binaire — refonte du pipeline contour
 
+> CDC spécialisé : `docs/CDC_IMAGE_MASK_2D_PIPELINE.md`
+>
+> Le présent document conserve uniquement les décisions d'intégrité géométrique
+> communes. Les détails d'algorithme raster, marching-squares, Smooth, preview,
+> taille physique, cache, threading et corpus sont désormais centralisés dans le
+> CDC spécialisé.
+
 Le pipeline actuel transforme d’abord chaque pixel actif en rectangle, fusionne ces rectangles avec Shapely, puis tente de lisser le polygone en escalier.
 
 Cette architecture explique directement les bords dentés :

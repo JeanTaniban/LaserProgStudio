@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_import_2d_mask_dialog_contains_live_preview_controls() -> None:
     source = (ROOT / "src" / "laserprog_studio" / "controllers" / "image_mask_import.py").read_text(encoding="utf-8")
     assert "Preview — black = 10 mm material, white = empty" in source
-    assert "render_mask_preview_image" in source
+    assert "build_mask_preview" in source
     assert "levels_slider.valueChanged.connect" in source
     assert "smooth_slider.valueChanged.connect" in source
     assert "invert_check.toggled.connect" in source
@@ -29,5 +29,6 @@ def test_mask_preview_runs_off_qt_thread_and_coalesces_stale_requests() -> None:
     assert 'preview_tasks.run(' in source
     assert 'coalesce_pending=True' in source
     assert 'description="2D mask preview"' in source
-    assert 'render_mask_preview_image(' in source
+    assert 'build_mask_preview(' in source
+    assert 'topology protected' in source
 

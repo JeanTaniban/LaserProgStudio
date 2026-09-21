@@ -210,180 +210,105 @@ def _build_binary_vector_mesh(
     levels: float | None = None,
     smooth: float = 0.0,
 ) -> MaskReliefResult:
-    """Vectorise a binary mask, triangulate it, then extrude it.
+    """Create a certified solid from a sub-pixel binary-mask footprint.
 
-    This replaces the old per-pixel 3D column generation for binary imports.
-    The raster is still sampled on a grid, but the resulting mesh is built from
-    the merged mask contours, which drastically reduces triangle counts for
-    large masks while staying faithful to the bitmap silhouette.
+    Raster/vector processing is intentionally completed before any 3D mesh is
+    built.  The resulting Shapely footprint is then extruded through the same
+    planar solid boundary used by Plan Tracer instead of maintaining a private
+    cap/wall triangulator here.
     """
 
-    from shapely.geometry import Polygon, MultiPolygon, box
-    from shapely.geometry.polygon import orient
-    from shapely.ops import triangulate, unary_union
-    try:
-        from shapely import constrained_delaunay_triangles as constrained_triangulate
-    except Exception:  # pragma: no cover - Shapely < 2.1 fallback
-        constrained_triangulate = None
+    from shapely.geometry import Polygon, MultiPolygon
 
-    pixel = max(1e-6, float(pixel_size_mm))
-    max_h = max(0.0, float(max_height_mm))
-    mask, source_size, downsampled, threshold = _load_binary_mask(
+    from laserprog_studio.planar_tools import make_locked_plane
+
+    from .image_mask_relief_contour import build_binary_mask_footprint
+    from .planar_boolean_solid import extrude_planar_regions_boolean_ready
+
+    max_h = float(max_height_mm)
+    if not math.isfinite(max_h) or max_h <= 1.0e-9:
+        raise ValueError("Mask height must be greater than zero.")
+
+    footprint = build_binary_mask_footprint(
         path,
+        pixel_size_mm=float(pixel_size_mm),
         invert=bool(invert),
         binary_threshold=float(binary_threshold),
         levels=levels,
         smooth=float(smooth),
         max_grid_size=int(max_grid_size),
     )
-    rows = len(mask)
-    cols = len(mask[0]) if rows else 0
-    if rows <= 0 or cols <= 0:
-        raise ValueError("Empty or unreadable image.")
+    geometry = footprint.geometry
 
-    active = {(r, c) for r in range(rows) for c in range(cols) if bool(mask[r][c])}
-    if not active:
-        raise ValueError("The binary mask contains no material. Adjust Levels, enable Invert, or use a higher-contrast image.")
-
-    total_w = cols * pixel
-    total_h = rows * pixel
-    x_origin = -total_w / 2.0
-    y_origin = -total_h / 2.0
-
-    def cell_bounds(r: int, c0: int, c1: int) -> tuple[float, float, float, float]:
-        x0 = x_origin + float(c0) * pixel
-        x1 = x_origin + float(c1) * pixel
-        y_top = y_origin + float(rows - r) * pixel
-        y_bottom = y_top - pixel
-        return x0, y_bottom, x1, y_top
-
-    # Step 1: raster -> vector-ready rectangles (merged horizontal runs).
-    rects = []
-    active_pixels = 0
-    for r in range(rows):
-        c = 0
-        while c < cols:
-            if not bool(mask[r][c]):
-                c += 1
-                continue
-            start = c
-            while c < cols and bool(mask[r][c]):
-                c += 1
-            end = c
-            active_pixels += end - start
-            x0, y0, x1, y1 = cell_bounds(r, start, end)
-            rects.append(box(x0, y0, x1, y1))
-
-    merged = unary_union(rects)
-    merged = _smooth_binary_geometry(merged, pixel_size_mm=pixel, smooth=float(smooth))
-    merged = _separate_polygon_point_contacts(merged, pixel_size_mm=pixel)
-    if merged.is_empty:
-        raise ValueError(
-            "Binary mask vectorization failed. Try another threshold or a higher-contrast image."
-        )
-
-    if isinstance(merged, Polygon):
-        polygons = [orient(merged, sign=1.0)]
-    elif isinstance(merged, MultiPolygon):
-        polygons = [orient(poly, sign=1.0) for poly in merged.geoms if not poly.is_empty]
-    else:  # pragma: no cover - defensive fallback for rare degenerate outputs
-        polygons = [orient(poly, sign=1.0) for poly in getattr(merged, "geoms", []) if isinstance(poly, Polygon) and not poly.is_empty]
-
+    if isinstance(geometry, Polygon):
+        polygons = [geometry]
+    elif isinstance(geometry, MultiPolygon):
+        polygons = [poly for poly in geometry.geoms if not poly.is_empty]
+    else:
+        polygons = [
+            poly
+            for poly in getattr(geometry, "geoms", ())
+            if isinstance(poly, Polygon) and not poly.is_empty
+        ]
     if not polygons:
         raise ValueError("No valid polygon contour was found in the binary mask.")
 
-    vertices: list[tuple[float, float, float]] = []
-    triangles: list[tuple[int, int, int]] = []
-    vertex_index: dict[tuple[int, int, int, int], int] = {}
-    vertex_scope = [0]
+    regions = []
+    for poly in polygons:
+        outer = tuple((float(x), float(y)) for x, y in list(poly.exterior.coords)[:-1])
+        holes = tuple(
+            tuple((float(x), float(y)) for x, y in list(ring.coords)[:-1])
+            for ring in poly.interiors
+        )
+        if len(outer) >= 3:
+            regions.append((outer, holes))
+    if not regions:
+        raise ValueError("The binary mask contains no manufacturable planar region.")
 
-    def _q(value: float) -> int:
-        return int(round(float(value) * _Q_SCALE))
-
-    def vertex(x: float, y: float, z: float) -> int:
-        key = (int(vertex_scope[0]), _q(x), _q(y), _q(z))
-        idx = vertex_index.get(key)
-        if idx is not None:
-            return idx
-        idx = len(vertices)
-        vertex_index[key] = idx
-        vertices.append((float(x), float(y), float(z)))
-        return idx
-
-    def add_tri(a: int, b: int, c: int) -> None:
-        if len({int(a), int(b), int(c)}) == 3:
-            triangles.append((int(a), int(b), int(c)))
-
-    def add_side_ring(coords: list[tuple[float, float]], *, reverse: bool = False) -> None:
-        if len(coords) < 2:
-            return
-        pts = list(coords)
-        if reverse:
-            pts = list(reversed(pts))
-        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
-            if abs(x1 - x0) <= 1e-12 and abs(y1 - y0) <= 1e-12:
-                continue
-            b0 = vertex(x0, y0, 0.0)
-            b1 = vertex(x1, y1, 0.0)
-            t0 = vertex(x0, y0, max_h)
-            t1 = vertex(x1, y1, max_h)
-            add_tri(b0, b1, t1)
-            add_tri(b0, t1, t0)
-
-    # Step 2: polygon triangulation for top/bottom caps + side walls.
-    for poly_index, poly in enumerate(polygons, start=1):
-        vertex_scope[0] = int(poly_index)
-        if constrained_triangulate is not None:
-            triangulated_geometry = constrained_triangulate(poly)
-            triangulated = getattr(triangulated_geometry, "geoms", [triangulated_geometry])
-        else:  # pragma: no cover - Shapely < 2.1 fallback
-            triangulated = triangulate(poly)
-        for tri in triangulated:
-            if tri.is_empty or tri.area <= 1e-12:
-                continue
-            # Unconstrained Delaunay triangles can have their centroid inside a
-            # concave polygon while crossing an exterior or hole boundary.  A
-            # full-triangle coverage check prevents cap/side-wall mismatches.
-            if not poly.covers(tri):
-                continue
-            coords = [(float(x), float(y)) for x, y in list(tri.exterior.coords)[:-1]]
-            if len(coords) != 3:
-                continue
-            top_ids = [vertex(x, y, max_h) for x, y in coords]
-            bot_ids = [vertex(x, y, 0.0) for x, y in coords]
-            add_tri(top_ids[0], top_ids[1], top_ids[2])
-            add_tri(bot_ids[2], bot_ids[1], bot_ids[0])
-
-        ext = [(float(x), float(y)) for x, y in list(poly.exterior.coords)]
-        add_side_ring(ext, reverse=False)
-        for ring in poly.interiors:
-            # Reverse hole ring to keep the wall facing the cavity.
-            inner = [(float(x), float(y)) for x, y in list(ring.coords)]
-            add_side_ring(inner, reverse=True)
-
-    mesh = WorkMesh(
+    mesh, solid_report = extrude_planar_regions_boolean_ready(
+        regions,
+        plane=make_locked_plane("top"),
+        depth=max_h,
         name=name,
-        vertices=vertices,
-        triangles=triangles,
         color=color,
-        metadata={"source_tool": "mask_relief", "boolean_skip_merge": True},
     )
+    metadata = dict(getattr(mesh, "metadata", {}) or {})
+    metadata.update(
+        {
+            "source_tool": "mask_relief",
+            "mask_contour_contract": "subpixel_marching_squares_v1",
+            "mask_source_width": int(footprint.source_size[0]),
+            "mask_source_height": int(footprint.source_size[1]),
+            "mask_grid_width": int(footprint.width),
+            "mask_grid_height": int(footprint.height),
+            "mask_step_x_mm": float(footprint.step_x_mm),
+            "mask_step_y_mm": float(footprint.step_y_mm),
+            "mask_smooth": float(smooth),
+            "mask_threshold": float(footprint.threshold),
+            "mask_extrusion_backend": str(solid_report.backend),
+        }
+    )
+    metadata.pop("boolean_skip_merge", None)
+    mesh.metadata = metadata
     try:
-        setattr(mesh, "_lps_skip_boolean_merge", True)
+        if hasattr(mesh, "_lps_skip_boolean_merge"):
+            delattr(mesh, "_lps_skip_boolean_merge")
     except Exception:
         pass
+
     stats = MaskReliefStats(
-        source_width=int(source_size[0]),
-        source_height=int(source_size[1]),
-        width=cols,
-        height=rows,
-        active_pixels=int(active_pixels),
-        vertices=len(vertices),
-        triangles=len(triangles),
+        source_width=int(footprint.source_size[0]),
+        source_height=int(footprint.source_size[1]),
+        width=int(footprint.width),
+        height=int(footprint.height),
+        active_pixels=int(footprint.active_pixels),
+        vertices=len(mesh.vertices),
+        triangles=len(mesh.triangles),
         max_height_mm=max_h,
-        pixel_size_mm=pixel,
-        downsampled=bool(downsampled),
+        pixel_size_mm=float(pixel_size_mm),
+        downsampled=bool(footprint.downsampled),
         binary=True,
-        binary_threshold=threshold,
+        binary_threshold=float(footprint.threshold),
     )
     return MaskReliefResult(mesh=mesh, stats=stats)
+

@@ -83,7 +83,14 @@ def _clamp_float(value: float, minimum: float, maximum: float) -> float:
 
 
 def _otsu_threshold(hist: list[int]) -> int:
-    """Return an automatic material threshold for a 0..255 activity histogram."""
+    """Return a stable automatic material threshold for a 0..255 histogram.
+
+    Otsu can have a whole plateau of equally optimal thresholds when the image
+    contains separated intensity bands (the extreme case is a pure black/white
+    mask). Picking the *first* optimum biases the threshold toward the darker
+    peak and can make diagonal pixels connect through the interpolated field.
+    Choose the midpoint of the optimal plateau instead.
+    """
 
     total = int(sum(int(v) for v in hist))
     if total <= 0:
@@ -91,8 +98,7 @@ def _otsu_threshold(hist: list[int]) -> int:
     sum_total = sum(i * int(v) for i, v in enumerate(hist))
     weight_bg = 0
     sum_bg = 0.0
-    best_score = -1.0
-    best_t = 127
+    scores: list[tuple[int, float]] = []
     for t, count in enumerate(hist):
         weight_bg += int(count)
         if weight_bg <= 0:
@@ -104,12 +110,17 @@ def _otsu_threshold(hist: list[int]) -> int:
         mean_bg = sum_bg / float(weight_bg)
         mean_fg = (float(sum_total) - sum_bg) / float(weight_fg)
         score = float(weight_bg) * float(weight_fg) * (mean_bg - mean_fg) ** 2
-        if score > best_score:
-            best_score = score
-            best_t = int(t)
+        scores.append((int(t), float(score)))
+    if not scores:
+        return 127
+    best_score = max(score for _t, score in scores)
     if best_score <= 0.0:
         return 127
-    return int(best_t)
+    tolerance = max(1.0e-12, abs(best_score) * 1.0e-12)
+    optimal = [t for t, score in scores if abs(score - best_score) <= tolerance]
+    if not optimal:
+        return 127
+    return int(round((float(optimal[0]) + float(optimal[-1])) * 0.5))
 
 
 def _load_binary_mask(

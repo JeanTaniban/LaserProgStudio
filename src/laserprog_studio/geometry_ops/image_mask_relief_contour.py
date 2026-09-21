@@ -115,7 +115,7 @@ def _subpixel_footprint(
     """Extract an interpolated threshold contour with marching squares."""
 
     from shapely import make_valid
-    from shapely.geometry import LineString
+    from shapely.geometry import LineString, box
     from shapely.ops import polygonize, unary_union
 
     values = np.asarray(activity, dtype=np.float64)
@@ -243,6 +243,15 @@ def _subpixel_footprint(
         raise ValueError("The binary mask contains no material after contour extraction.")
 
     geometry = unary_union(selected)
+    # The padded outside samples are only a contour-closing device. They must
+    # never make the physical mask extend beyond the source image rectangle.
+    image_bounds = box(
+        x_min,
+        y_max - float(physical_height_mm),
+        x_min + float(physical_width_mm),
+        y_max,
+    )
+    geometry = geometry.intersection(image_bounds)
     if not bool(getattr(geometry, "is_valid", False)):
         try:
             geometry = make_valid(geometry)

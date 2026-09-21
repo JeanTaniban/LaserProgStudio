@@ -4,6 +4,7 @@ from __future__ import annotations
 from PySide6.QtGui import QImage, QPixmap
 
 from .._window_deps import *
+from ..application.background_tasks import BackgroundTaskManager
 
 
 class ImageMaskImportLayer:
@@ -90,6 +91,8 @@ class ImageMaskImportLayer:
 
             preview_timer = QTimer(dialog)
             preview_timer.setSingleShot(True)
+            preview_tasks = BackgroundTaskManager(dialog, max_workers=1, poll_ms=25)
+            dialog.destroyed.connect(lambda *_args: preview_tasks.shutdown())
 
             def _pil_to_pixmap(image) -> QPixmap:
                 rgba = image.convert("RGBA")
@@ -115,31 +118,49 @@ class ImageMaskImportLayer:
                     preview_label.setText("Image not found.")
                     preview_status.setText("Choose a valid PNG, JPG, JPEG, or BMP image.")
                     return
-                try:
+
+                request_path = Path(path)
+                request_invert = bool(invert_check.isChecked())
+                request_levels = int(levels_slider.value())
+                request_smooth = float(smooth_slider.value())
+                max_w = max(320, int(preview_label.width()) - 20)
+                max_h = max(180, int(preview_label.height()) - 20)
+                preview_status.setText("Computing preview…")
+
+                def _worker():
                     from laserprog_studio.geometry_ops.image_mask_relief import render_mask_preview_image
 
-                    max_w = max(320, int(preview_label.width()) - 20)
-                    max_h = max(180, int(preview_label.height()) - 20)
-                    image = render_mask_preview_image(
-                        path,
-                        invert=bool(invert_check.isChecked()),
-                        levels=int(levels_slider.value()),
-                        smooth=float(smooth_slider.value()),
+                    return render_mask_preview_image(
+                        request_path,
+                        invert=request_invert,
+                        levels=request_levels,
+                        smooth=request_smooth,
                         max_grid_size=512,
                         max_preview_size=(max_w, max_h),
                         legacy_size_cap_px=512,
                     )
+
+                def _success(image) -> None:
                     preview_label.setText("")
                     preview_label.setPixmap(_pil_to_pixmap(image))
                     preview_status.setText(
-                        f"Levels {int(levels_slider.value())} · Smooth {int(smooth_slider.value())} · "
-                        f"Invert {'on' if invert_check.isChecked() else 'off'}"
+                        f"Levels {request_levels} · Smooth {int(request_smooth)} · "
+                        f"Invert {'on' if request_invert else 'off'}"
                     )
-                except Exception as exc:
+
+                def _error(exc: BaseException) -> None:
                     preview_label.setPixmap(QPixmap())
                     preview_label.setText("Preview unavailable.")
                     preview_status.setText(str(exc))
 
+                preview_tasks.run(
+                    "mask-2d-preview",
+                    _worker,
+                    on_success=_success,
+                    on_error=_error,
+                    description="2D mask preview",
+                    coalesce_pending=True,
+                )
             def schedule_preview() -> None:
                 preview_timer.start(120)
 

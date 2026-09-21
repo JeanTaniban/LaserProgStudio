@@ -132,7 +132,8 @@ def _resolve_activity_threshold(
     """Return (threshold_level_0_255, threshold_norm_0_1)."""
 
     if levels is None:
-        threshold_norm = _clamp_float(float(binary_threshold or 0.5), 0.0, 1.0)
+        raw_threshold = 0.5 if binary_threshold is None else float(binary_threshold)
+        threshold_norm = _clamp_float(raw_threshold, 0.0, 1.0)
         return float(threshold_norm) * 255.0, float(threshold_norm)
 
     level = _clamp_float(float(levels), 0.0, 100.0)

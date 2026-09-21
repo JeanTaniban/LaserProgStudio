@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from .image_mask_relief_loading import _clamp_float, _resolve_activity_threshold, _resample_filter
-from .image_mask_relief_types import MaskPhysicalSize
+from .image_mask_relief_types import MaskPhysicalSize, MaskSmoothingReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +33,7 @@ class BinaryMaskFootprint:
     step_y_mm: float
     physical_width_mm: float
     physical_height_mm: float
+    smoothing_report: MaskSmoothingReport
 
 
 def resolve_mask_physical_size(
@@ -340,16 +341,59 @@ def _topology_signature(geometry: Any) -> tuple[int, tuple[int, ...]]:
     return (len(polygons), tuple(sorted(len(poly.interiors) for poly in polygons)))
 
 
-def _safe_smooth_footprint(geometry: Any, *, sample_step_mm: float, smooth: float) -> Any:
+def _safe_smooth_footprint(
+    geometry: Any,
+    *,
+    sample_step_mm: float,
+    smooth: float,
+) -> tuple[Any, MaskSmoothingReport]:
     """Simplify a sub-pixel footprint without changing its topology."""
 
     level = _clamp_float(float(smooth), 0.0, 100.0)
-    if level <= 0.0:
-        return geometry
-
     reference = geometry
     signature = _topology_signature(reference)
     ref_area = max(float(getattr(reference, "area", 0.0)), 1.0e-12)
+
+    def _vertex_count(candidate: Any) -> int:
+        total = 0
+        for poly in _iter_polygons(candidate):
+            total += max(0, len(poly.exterior.coords) - 1)
+            total += sum(max(0, len(ring.coords) - 1) for ring in poly.interiors)
+        return int(total)
+
+    source_components = int(signature[0])
+    source_holes = int(sum(signature[1]))
+    source_vertices = _vertex_count(reference)
+
+    def _report(candidate: Any, accepted_level: float) -> MaskSmoothingReport:
+        result_signature = _topology_signature(candidate)
+        try:
+            symmetric = float(candidate.symmetric_difference(reference).area)
+        except Exception:
+            symmetric = float("inf")
+        try:
+            hausdorff = float(candidate.hausdorff_distance(reference))
+        except Exception:
+            hausdorff = float("inf")
+        return MaskSmoothingReport(
+            requested_level=float(level),
+            accepted_level=float(accepted_level),
+            source_components=source_components,
+            result_components=int(result_signature[0]),
+            source_holes=source_holes,
+            result_holes=int(sum(result_signature[1])),
+            source_area=float(getattr(reference, "area", 0.0)),
+            result_area=float(getattr(candidate, "area", 0.0)),
+            symmetric_difference_area=float(symmetric),
+            hausdorff_distance=float(hausdorff),
+            source_vertices=source_vertices,
+            result_vertices=_vertex_count(candidate),
+            fallback_used=bool(float(accepted_level) + 1.0e-9 < float(level)),
+        )
+
+    if level <= 0.0:
+        return reference, _report(reference, 0.0)
+
     step = max(float(sample_step_mm), 1.0e-9)
     target_tolerance = step * (0.04 + 0.76 * level / 100.0)
     max_displacement = step * (0.15 + 0.85 * level / 100.0)
@@ -388,8 +432,9 @@ def _safe_smooth_footprint(geometry: Any, *, sample_step_mm: float, smooth: floa
         except Exception:
             continue
         if acceptable(candidate):
-            return candidate
-    return reference
+            accepted_level = float(level) * float(factor)
+            return candidate, _report(candidate, accepted_level)
+    return reference, _report(reference, 0.0)
 
 
 def build_binary_mask_footprint(
@@ -441,7 +486,7 @@ def build_binary_mask_footprint(
         physical_width_mm=physical_width,
         physical_height_mm=physical_height,
     )
-    geometry = _safe_smooth_footprint(
+    geometry, smoothing_report = _safe_smooth_footprint(
         geometry,
         sample_step_mm=max(step_x, step_y),
         smooth=float(smooth),
@@ -459,6 +504,7 @@ def build_binary_mask_footprint(
         step_y_mm=float(step_y),
         physical_width_mm=float(physical_width),
         physical_height_mm=float(physical_height),
+        smoothing_report=smoothing_report,
     )
 
 

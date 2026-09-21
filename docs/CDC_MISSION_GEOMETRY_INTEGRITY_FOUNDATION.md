@@ -2727,3 +2727,94 @@ Pour l’enveloppe projet de référence définie par les benchmarks de release 
 
 Ces budgets deviennent des critères de release, mesurés sous Windows avec le build distribué.
 
+### 30.25 Mesures complémentaires — croissance avec RestoreHistory
+
+Fixture : un seul mesh d’environ `0.695 MB` dans le fichier courant. La géométrie courante reste identique ; seul le nombre de restore points augmente.
+
+Windows :
+
+- 0 snapshot : `~247 ms`, `0.695 MB` ;
+- 2 snapshots : `~722 ms`, `2.08 MB` ;
+- 5 snapshots : `~1453 ms`, `4.17 MB` ;
+- 10 snapshots : `~2667 ms`, `7.64 MB`.
+
+Linux :
+
+- 0 snapshot : `~149 ms` ;
+- 2 snapshots : `~567 ms` ;
+- 5 snapshots : `~911 ms` ;
+- 10 snapshots : `~1615 ms`.
+
+Le coût est donc approximativement proportionnel au nombre de copies de géométrie conservées.
+
+Conclusion :
+
+> changer uniquement le niveau de compression ne peut pas résoudre les saves de 20–30 s lorsque le fichier contient de nombreux snapshots complets.
+
+La déduplication content-addressed et la séparation RestoreHistory / état courant sont obligatoires.
+
+### 30.26 Benchmark Zstandard
+
+Le codec DEFLATE utilisé par `np.savez_compressed()` est lui-même coûteux.
+
+Fixture :
+
+- `36000` vertices ;
+- `72000` triangles ;
+- payload NPZ non compressé : `2,592,520 bytes`.
+
+Windows :
+
+- `np.savez_compressed` : ~`205 ms`, `1,425,126 bytes` ;
+- Zstandard level 1 sur le NPZ brut : ~`5.5 ms`, `1,262,831 bytes` ;
+- Zstandard level 3 : ~`11.8 ms`, `1,384,606 bytes` ;
+- Zstandard level 6 : ~`25.2 ms`, `1,384,540 bytes`.
+
+Linux :
+
+- `np.savez_compressed` : ~`209 ms` ;
+- Zstd level 1 : ~`6.4 ms` ;
+- Zstd level 3 : ~`14.5 ms` ;
+- Zstd level 6 : ~`27.1 ms`.
+
+Sur ce corpus, Zstd niveau 1 est à la fois :
+
+- environ **25–35× plus rapide** ;
+- environ **11 % plus petit** que le NPZ/DEFLATE actuel.
+
+Décision cible :
+
+- le format v2 ne doit plus dépendre de `np.savez_compressed` pour les gros blobs ;
+- benchmarker/valider Zstandard niveau 1 comme codec par défaut ;
+- garder le codec versionné dans le header du blob afin de permettre une évolution future ;
+- stocker un payload canonique simple (arrays + header) compressé une seule fois ;
+- loader v2 doit vérifier checksum/hash après décompression.
+
+La dépendance Zstandard doit être pinée et incluse explicitement dans le packaging Windows si retenue après validation finale.
+
+### 30.27 Conclusion performance intermédiaire
+
+Les lenteurs actuelles ont plusieurs causes cumulatives :
+
+1. duplication intégrale des meshes dans RestoreHistory ;
+2. `copy.deepcopy(ProjectStore)` de l’autosave, y compris l’Undo RAM ;
+3. conversion répétée Python lists → NumPy arrays ;
+4. recompression de chaque mesh à chaque save ;
+5. codec DEFLATE lent ;
+6. double compression NPZ + ZIP ;
+7. save manuel synchrone sur le thread Qt ;
+8. autosave partageant un executor mono-worker avec d’autres tâches lourdes.
+
+Aucune optimisation isolée ne suffira.
+
+Le plan cible combine donc :
+
+- modèle de révision immuable ;
+- blobs content-addressed ;
+- compression Zstd rapide lors de la création/modification du blob ;
+- save incrémental ;
+- executor persistence dédié ;
+- manual save asynchrone ;
+- recovery store minimal ;
+- RestoreHistory dédupliqué et borné.
+

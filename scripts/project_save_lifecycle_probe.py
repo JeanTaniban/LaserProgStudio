@@ -337,6 +337,105 @@ def _incremental_container_probe(root: Path) -> dict[str, object]:
     }
 
 
+def _large_container_scaling_probe(root: Path) -> dict[str, object]:
+    # Pure container-I/O benchmark. Payloads are deterministic opaque geometry
+    # blobs; they intentionally skip geometry encoding so this measures only
+    # how save cost scales with total unchanged project size.
+    rng = np.random.default_rng(424242)
+    blob_count = 96
+    payload_size = 1024 * 1024
+    payloads: list[tuple[str, bytes]] = []
+    for i in range(blob_count):
+        payload = bytearray(rng.bytes(payload_size))
+        payload[0:8] = int(i).to_bytes(8, "little", signed=False)
+        blob = bytes(payload)
+        digest = hashlib.sha256(blob).hexdigest()
+        payloads.append((digest, blob))
+
+    manifest = json.dumps({"geometry": [d for d, _ in payloads]}).encode("utf-8")
+    total_bytes = int(sum(len(p) for _d, p in payloads))
+
+    zip_path = root / "large_incremental_compare.lpsproj"
+    def write_zip(current: list[tuple[str, bytes]], manifest_bytes: bytes) -> tuple[float, int]:
+        started = time.perf_counter()
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_STORED) as zf:
+            zf.writestr("manifest.json", manifest_bytes)
+            for digest, payload in current:
+                zf.writestr(f"geometry/{digest}.blob", payload)
+        return float((time.perf_counter() - started) * 1000.0), int(zip_path.stat().st_size)
+
+    zip_initial_ms, zip_bytes = write_zip(payloads, manifest)
+    zip_repeat_ms, _ = write_zip(payloads, manifest)
+
+    changed = list(payloads)
+    old_digest, old_payload = changed[-1]
+    changed_payload = bytearray(old_payload)
+    changed_payload[-1] ^= 0xFF
+    changed_payload = bytes(changed_payload)
+    changed_digest = hashlib.sha256(changed_payload).hexdigest()
+    changed[-1] = (changed_digest, changed_payload)
+    changed_manifest = json.dumps({"geometry": [d for d, _ in changed]}).encode("utf-8")
+    zip_one_changed_ms, _ = write_zip(changed, changed_manifest)
+
+    db_path = root / "large_incremental_compare.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        journal_mode = con.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        con.execute("PRAGMA synchronous=FULL")
+        con.execute("CREATE TABLE geometry_blobs (hash TEXT PRIMARY KEY, payload BLOB NOT NULL)")
+        con.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL)")
+        started = time.perf_counter()
+        with con:
+            con.executemany(
+                "INSERT INTO geometry_blobs(hash, payload) VALUES(?, ?)",
+                [(digest, sqlite3.Binary(payload)) for digest, payload in payloads],
+            )
+            con.execute("INSERT INTO kv(key, value) VALUES('manifest', ?)", (sqlite3.Binary(manifest),))
+        sqlite_initial_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute("UPDATE kv SET value=? WHERE key='manifest'", (sqlite3.Binary(manifest),))
+        sqlite_no_change_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute(
+                "INSERT INTO geometry_blobs(hash, payload) VALUES(?, ?)",
+                (changed_digest, sqlite3.Binary(changed_payload)),
+            )
+            con.execute("UPDATE kv SET value=? WHERE key='manifest'", (sqlite3.Binary(changed_manifest),))
+        sqlite_one_changed_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute("DELETE FROM geometry_blobs WHERE hash=?", (old_digest,))
+        sqlite_gc_ms = (time.perf_counter() - started) * 1000.0
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        db_bytes = int(db_path.stat().st_size)
+    finally:
+        con.close()
+
+    return {
+        "blob_count": blob_count,
+        "logical_blob_bytes": total_bytes,
+        "zip_full_rewrite": {
+            "initial_ms": zip_initial_ms,
+            "repeat_no_change_ms": zip_repeat_ms,
+            "one_changed_ms": zip_one_changed_ms,
+            "archive_bytes": zip_bytes,
+        },
+        "sqlite_wal": {
+            "journal_mode": str(journal_mode),
+            "initial_ms": float(sqlite_initial_ms),
+            "no_change_ms": float(sqlite_no_change_ms),
+            "one_changed_blob_ms": float(sqlite_one_changed_ms),
+            "gc_delete_ms": float(sqlite_gc_ms),
+            "db_bytes_after_checkpoint": db_bytes,
+        },
+    }
+
+
 def _snapshot_scaling_probe(root: Path) -> dict[str, object]:
     # One moderately heavy mesh, duplicated by semantic history exactly as the
     # current SceneDocument implementation does. The current scene remains the
@@ -474,6 +573,7 @@ def main() -> int:
             "compression_strategies": _compression_strategy_probe(root),
             "snapshot_scaling": _snapshot_scaling_probe(root),
             "incremental_container": _incremental_container_probe(root),
+            "large_container_scaling": _large_container_scaling_probe(root),
             "atomic_failure": _atomic_failure_probe(root),
         }
 

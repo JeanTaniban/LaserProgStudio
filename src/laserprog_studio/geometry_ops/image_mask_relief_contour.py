@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from .image_mask_relief_loading import _clamp_float, _resolve_activity_threshold, _resample_filter
+from .image_mask_relief_types import MaskPhysicalSize
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,43 @@ class BinaryMaskFootprint:
     step_y_mm: float
     physical_width_mm: float
     physical_height_mm: float
+
+
+def resolve_mask_physical_size(
+    source_size: tuple[int, int],
+    *,
+    pixel_size_mm: float = 1.0,
+    requested: MaskPhysicalSize | None = None,
+    legacy_max_side_px: int | None = None,
+) -> MaskPhysicalSize:
+    """Resolve mechanical dimensions independently from analysis resolution.
+
+    The requested value is the future explicit UI/API contract. The legacy
+    maximum-side option reproduces the historical user-facing import size
+    without coupling that size to the actual analysis grid.
+    """
+
+    source_width = max(int(source_size[0]), 1)
+    source_height = max(int(source_size[1]), 1)
+    if requested is not None:
+        width = float(requested.width_mm)
+        height = float(requested.height_mm)
+        if not math.isfinite(width) or not math.isfinite(height) or width <= 1.0e-9 or height <= 1.0e-9:
+            raise ValueError("Mask physical width and height must be positive finite values.")
+        return MaskPhysicalSize(width_mm=width, height_mm=height)
+
+    source_pixel = float(pixel_size_mm)
+    if not math.isfinite(source_pixel) or source_pixel <= 1.0e-9:
+        raise ValueError("Mask pixel size must be a positive finite value.")
+
+    scale = 1.0
+    cap = int(legacy_max_side_px or 0)
+    if cap > 0:
+        scale = min(1.0, float(cap) / float(max(source_width, source_height)))
+    return MaskPhysicalSize(
+        width_mm=float(source_width) * source_pixel * scale,
+        height_mm=float(source_height) * source_pixel * scale,
+    )
 
 
 def _iter_polygons(geometry: Any) -> tuple[Any, ...]:
@@ -363,6 +401,8 @@ def build_binary_mask_footprint(
     levels: float | None = None,
     smooth: float = 0.0,
     max_grid_size: int = 512,
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
 ) -> BinaryMaskFootprint:
     """Build the shared, scale-preserving vector footprint for a 2D mask."""
 
@@ -377,9 +417,14 @@ def build_binary_mask_footprint(
     if rows <= 0 or cols <= 0:
         raise ValueError("Empty or unreadable image.")
 
-    source_pixel = max(1.0e-9, float(pixel_size_mm))
-    physical_width = float(source_size[0]) * source_pixel
-    physical_height = float(source_size[1]) * source_pixel
+    resolved_size = resolve_mask_physical_size(
+        source_size,
+        pixel_size_mm=float(pixel_size_mm),
+        requested=physical_size,
+        legacy_max_side_px=legacy_size_cap_px,
+    )
+    physical_width = float(resolved_size.width_mm)
+    physical_height = float(resolved_size.height_mm)
     step_x = physical_width / float(cols)
     step_y = physical_height / float(rows)
     threshold_byte = float(threshold_norm) * 255.0
@@ -420,6 +465,7 @@ def build_binary_mask_footprint(
 __all__ = [
     "BinaryMaskFootprint",
     "build_binary_mask_footprint",
+    "resolve_mask_physical_size",
     "_ambiguous_case_pairs",
     "_bilinear_sample",
 ]

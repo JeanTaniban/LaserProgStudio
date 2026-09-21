@@ -127,6 +127,7 @@ class ImageMaskImportLayer:
                         smooth=float(smooth_slider.value()),
                         max_grid_size=512,
                         max_preview_size=(max_w, max_h),
+                        legacy_size_cap_px=512,
                     )
                     preview_label.setText("")
                     preview_label.setPixmap(_pil_to_pixmap(image))
@@ -190,6 +191,7 @@ class ImageMaskImportLayer:
         binary: bool = True,
         binary_threshold: float = 0.5,
         max_grid_size: int = 512,
+        legacy_size_cap_px: int | None = 512,
         levels: float | None = None,
         smooth: float = 35.0,
     ) -> None:
@@ -204,6 +206,7 @@ class ImageMaskImportLayer:
                 binary=bool(binary),
                 binary_threshold=float(binary_threshold),
                 max_grid_size=int(max_grid_size),
+                legacy_size_cap_px=legacy_size_cap_px,
                 levels=levels,
                 smooth=float(smooth),
             )

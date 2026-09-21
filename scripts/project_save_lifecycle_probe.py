@@ -216,6 +216,35 @@ def _atomic_failure_probe(root: Path) -> dict[str, object]:
     }
 
 
+def _snapshot_scaling_probe(root: Path) -> dict[str, object]:
+    # One moderately heavy mesh, duplicated by semantic history exactly as the
+    # current SceneDocument implementation does. The current scene remains the
+    # same; only retained restore-point count changes.
+    base = _heavy_mesh("snapshot_scaling", seed=555, vertex_count=18000, triangle_count=36000)
+    rows: dict[str, object] = {}
+    for snapshot_count in (0, 2, 5, 10):
+        project = ProjectStore.new_empty(scene_name="main")
+        scene = project.active_scene
+        scene.model_store.set_meshes([base], push_undo=False)
+        scene.history_limit = max(50, snapshot_count + 2)
+        for i in range(snapshot_count):
+            scene.record_modification(
+                f"snapshot {i}",
+                "tool_apply",
+                capture_snapshot=True,
+                metadata={"probe_index": i},
+            )
+        result = _save(project, root / f"snapshot_scaling_{snapshot_count}.lpsproj")
+        rows[str(snapshot_count)] = {
+            "snapshot_count": snapshot_count,
+            "archive_bytes": result["size_bytes"],
+            "snapshot_npz_count": result["snapshot_npz_count"],
+            "mesh_npz_count": result["mesh_npz_count"],
+            "save_ms": result["save_ms"],
+        }
+    return rows
+
+
 def _compression_strategy_probe(root: Path) -> dict[str, object]:
     mesh = _heavy_mesh("compression_probe", seed=999, vertex_count=36000, triangle_count=72000)
     vertices = np.asarray(mesh.vertices, dtype=np.float64)
@@ -322,6 +351,7 @@ def main() -> int:
             "removed_scene": _scenario_removed_scene(root),
             "undo_only": _scenario_undo_only(root),
             "compression_strategies": _compression_strategy_probe(root),
+            "snapshot_scaling": _snapshot_scaling_probe(root),
             "atomic_failure": _atomic_failure_probe(root),
         }
 

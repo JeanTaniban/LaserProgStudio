@@ -165,3 +165,19 @@ The target service is `ProjectPersistenceService`, with explicit `FULL_SAVE` and
 `RECOVERY_SAVE` modes. See
 `docs/CDC_MISSION_GEOMETRY_INTEGRITY_FOUNDATION.md` for the measured retention
 evidence and detailed migration plan.
+
+### Non-blocking incremental saves
+
+Persistence must be revision-based and incremental.
+
+- manual saves never run serialization on the Qt thread;
+- autosave uses a dedicated persistence executor, separate from geometry workers;
+- the UI captures only a lightweight immutable `ProjectRevision` and schedules work;
+- geometry blobs are content-addressed and encoded once when geometry changes, not on every save;
+- unchanged geometry is reused without re-encoding or recompression;
+- autosave/recovery excludes technical undo, restore history and rebuildable caches;
+- concurrent edits create a newer revision while an older revision is being saved;
+- a completed save marks the document clean only when its saved revision is still the current revision;
+- autosaves are coalesced and manual saves have priority;
+- persistence performance is measured by main-thread stall, revision capture, changed-blob encoding, bytes written and atomic commit time;
+- release targets are sub-20 ms scheduling, no perceptible UI freeze, and 1–2 second incremental save latency for the standard Windows project envelope.

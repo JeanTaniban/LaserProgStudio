@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .image_mask_relief_contour import build_binary_mask_footprint
 from .image_mask_relief_loading import _resample_filter
+from .image_mask_relief_types import MaskPhysicalSize
 
 
 def render_mask_preview_image(
@@ -15,6 +16,8 @@ def render_mask_preview_image(
     smooth: float = 35.0,
     max_grid_size: int = 512,
     max_preview_size: tuple[int, int] = (380, 240),
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
 ):
     """Rasterize the exact vector footprint used by the binary 3D importer."""
 
@@ -29,6 +32,8 @@ def render_mask_preview_image(
         levels=levels,
         smooth=float(smooth),
         max_grid_size=int(max_grid_size),
+        physical_size=physical_size,
+        legacy_size_cap_px=legacy_size_cap_px,
     )
     rows = int(footprint.height)
     cols = int(footprint.width)

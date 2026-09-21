@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw
 from laserprog_studio.boolean_ops import is_closed_triangle_mesh
 from laserprog_studio.geometry_ops.boolean_topology_contract import analyze_work_mesh_boolean_topology
 from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh
-from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint
+from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint, clear_mask_contour_caches
 from laserprog_studio.geometry_ops.manifold_contract import construct_manifold, manifold_is_valid
 
 
@@ -341,6 +341,7 @@ def main() -> int:
 
         resolution_rows = {}
         for grid_limit in (256, 512, 1024):
+            clear_mask_contour_caches()
             started = time.perf_counter()
             fp = build_binary_mask_footprint(
                 hi_path,
@@ -351,7 +352,20 @@ def main() -> int:
                 smooth=35,
                 max_grid_size=grid_limit,
             )
-            footprint_ms = (time.perf_counter() - started) * 1000.0
+            cold_footprint_ms = (time.perf_counter() - started) * 1000.0
+
+            started = time.perf_counter()
+            warm_fp = build_binary_mask_footprint(
+                hi_path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=75,
+                max_grid_size=grid_limit,
+            )
+            warm_smooth_ms = (time.perf_counter() - started) * 1000.0
+
             started = time.perf_counter()
             result = build_mask_relief_mesh(
                 hi_path,
@@ -362,12 +376,14 @@ def main() -> int:
                 smooth=35,
                 max_grid_size=grid_limit,
             )
-            solid_ms = (time.perf_counter() - started) * 1000.0
+            warm_solid_ms = (time.perf_counter() - started) * 1000.0
             resolution_rows[str(grid_limit)] = {
-                "footprint_ms": footprint_ms,
-                "solid_ms": solid_ms,
+                "cold_footprint_ms": cold_footprint_ms,
+                "warm_smooth_ms": warm_smooth_ms,
+                "warm_solid_ms": warm_solid_ms,
                 "grid": [fp.width, fp.height],
                 "ring_vertices": _polygon_metrics(fp.geometry)["ring_vertices"],
+                "warm_ring_vertices": _polygon_metrics(warm_fp.geometry)["ring_vertices"],
                 "mesh_vertices": len(result.mesh.vertices),
                 "mesh_triangles": len(result.mesh.triangles),
             }
@@ -391,6 +407,7 @@ def main() -> int:
 
         complex_rows = {}
         for grid_limit in (512, 1024):
+            clear_mask_contour_caches()
             started = time.perf_counter()
             fp = build_binary_mask_footprint(
                 complex_path,
@@ -401,7 +418,20 @@ def main() -> int:
                 smooth=35,
                 max_grid_size=grid_limit,
             )
-            footprint_ms = (time.perf_counter() - started) * 1000.0
+            cold_footprint_ms = (time.perf_counter() - started) * 1000.0
+
+            started = time.perf_counter()
+            warm_fp = build_binary_mask_footprint(
+                complex_path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=75,
+                max_grid_size=grid_limit,
+            )
+            warm_smooth_ms = (time.perf_counter() - started) * 1000.0
+
             started = time.perf_counter()
             result = build_mask_relief_mesh(
                 complex_path,
@@ -412,15 +442,17 @@ def main() -> int:
                 smooth=35,
                 max_grid_size=grid_limit,
             )
-            solid_ms = (time.perf_counter() - started) * 1000.0
+            warm_solid_ms = (time.perf_counter() - started) * 1000.0
             metrics = _polygon_metrics(fp.geometry)
             complex_rows[str(grid_limit)] = {
-                "footprint_ms": footprint_ms,
-                "solid_ms": solid_ms,
+                "cold_footprint_ms": cold_footprint_ms,
+                "warm_smooth_ms": warm_smooth_ms,
+                "warm_solid_ms": warm_solid_ms,
                 "grid": [fp.width, fp.height],
                 "polygon_count": metrics["polygon_count"],
                 "hole_count": metrics["hole_count"],
                 "ring_vertices": metrics["ring_vertices"],
+                "warm_ring_vertices": _polygon_metrics(warm_fp.geometry)["ring_vertices"],
                 "mesh_vertices": len(result.mesh.vertices),
                 "mesh_triangles": len(result.mesh.triangles),
                 "manifold": _manifold(result.mesh),

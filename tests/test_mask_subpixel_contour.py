@@ -12,6 +12,7 @@ from laserprog_studio.geometry_ops.image_mask_relief_contour import (
     _topology_correspondence_safe,
     _cached_activity_field,
     _cached_raw_footprint_wkb,
+    _cached_smoothed_footprint_wkb,
     build_binary_mask_footprint,
     clear_mask_contour_caches,
 )
@@ -103,10 +104,15 @@ def test_mask_contour_cache_reuses_raw_vectorization_across_smooth_values(tmp_pa
     build_binary_mask_footprint(path, levels=50, smooth=100, max_grid_size=128)
     activity_after_second = _cached_activity_field.cache_info()
     raw_after_second = _cached_raw_footprint_wkb.cache_info()
+    smooth_after_second = _cached_smoothed_footprint_wkb.cache_info()
+
+    build_binary_mask_footprint(path, levels=50, smooth=100, max_grid_size=128)
+    smooth_after_repeat = _cached_smoothed_footprint_wkb.cache_info()
 
     assert raw_after_first.misses == 1
     assert raw_after_second.hits >= raw_after_first.hits + 1
     assert activity_after_second.hits >= activity_after_first.hits + 1
+    assert smooth_after_repeat.hits >= smooth_after_second.hits + 1
 
 
 def test_mask_contour_cache_invalidates_when_source_file_changes(tmp_path) -> None:

@@ -12,6 +12,7 @@ It is diagnostic and intentionally does not modify production behavior.
 from __future__ import annotations
 
 import copy
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -183,6 +184,81 @@ def _scenario_undo_only(root: Path) -> dict[str, object]:
     return {"with_undo": before, "without_undo": after}
 
 
+def _compression_strategy_probe(root: Path) -> dict[str, object]:
+    mesh = _heavy_mesh("compression_probe", seed=999, vertex_count=36000, triangle_count=72000)
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    triangles = np.asarray(mesh.triangles, dtype=np.int64)
+
+    def encode_npz(*, compressed: bool) -> tuple[bytes, float]:
+        buffer = io.BytesIO()
+        started = time.perf_counter()
+        if compressed:
+            np.savez_compressed(buffer, vertices=vertices, triangles=triangles)
+        else:
+            np.savez(buffer, vertices=vertices, triangles=triangles)
+        elapsed = (time.perf_counter() - started) * 1000.0
+        return buffer.getvalue(), float(elapsed)
+
+    def write_outer(name: str, payload: bytes, *, compress_type: int, level: int | None = None) -> tuple[int, float]:
+        path = root / name
+        started = time.perf_counter()
+        kwargs: dict[str, object] = {"compression": compress_type}
+        if level is not None and compress_type == zipfile.ZIP_DEFLATED:
+            kwargs["compresslevel"] = int(level)
+        with zipfile.ZipFile(path, "w", **kwargs) as zf:
+            zf.writestr("mesh.npz", payload, compress_type=compress_type)
+        elapsed = (time.perf_counter() - started) * 1000.0
+        return int(path.stat().st_size), float(elapsed)
+
+    compressed_payload, compressed_encode_ms = encode_npz(compressed=True)
+    raw_payload, raw_encode_ms = encode_npz(compressed=False)
+
+    current_size, current_outer_ms = write_outer(
+        "compression_current_double.zip",
+        compressed_payload,
+        compress_type=zipfile.ZIP_DEFLATED,
+        level=6,
+    )
+    inner_only_size, inner_only_outer_ms = write_outer(
+        "compression_inner_only.zip",
+        compressed_payload,
+        compress_type=zipfile.ZIP_STORED,
+    )
+    outer_only_size, outer_only_outer_ms = write_outer(
+        "compression_outer_only.zip",
+        raw_payload,
+        compress_type=zipfile.ZIP_DEFLATED,
+        level=6,
+    )
+
+    return {
+        "payload": {
+            "vertices": int(len(vertices)),
+            "triangles": int(len(triangles)),
+            "compressed_npz_bytes": int(len(compressed_payload)),
+            "raw_npz_bytes": int(len(raw_payload)),
+        },
+        "current_double_compression": {
+            "npz_encode_ms": compressed_encode_ms,
+            "outer_write_ms": current_outer_ms,
+            "total_encode_write_ms": compressed_encode_ms + current_outer_ms,
+            "archive_bytes": current_size,
+        },
+        "single_inner_npz_outer_stored": {
+            "npz_encode_ms": compressed_encode_ms,
+            "outer_write_ms": inner_only_outer_ms,
+            "total_encode_write_ms": compressed_encode_ms + inner_only_outer_ms,
+            "archive_bytes": inner_only_size,
+        },
+        "single_outer_zip": {
+            "npz_encode_ms": raw_encode_ms,
+            "outer_write_ms": outer_only_outer_ms,
+            "total_encode_write_ms": raw_encode_ms + outer_only_outer_ms,
+            "archive_bytes": outer_only_size,
+        },
+    }
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -192,6 +268,7 @@ def main() -> int:
             "history_pruned": _scenario_history_pruned(root),
             "removed_scene": _scenario_removed_scene(root),
             "undo_only": _scenario_undo_only(root),
+            "compression_strategies": _compression_strategy_probe(root),
         }
 
     # Derived ratios make CI evidence easier to read.

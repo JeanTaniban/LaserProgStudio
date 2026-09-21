@@ -2,11 +2,41 @@
 
 ## Statut
 
-Architecture cible proposée pour LaserProg Studio.
+**CDC finalisé pour implémentation — 21 septembre 2026.**
+
+Ce document est la source de vérité de la mission sur la branche leane/geometry-integrity-foundation-cdc. Il décrit l’architecture cible, les défauts reproduits, les décisions techniques, les tests obligatoires, les budgets de performance et l’ordre de migration.
+
+La phase d’étude est considérée comme suffisamment complète pour commencer l’implémentation. Une hypothèse peut encore être ajustée si un test reproductible la contredit, mais toute modification de contrat doit être documentée ici avant d’être généralisée.
 
 Cette mission remplace l’approche où chaque outil implémente ses propres contrôles de mesh. Le principe retenu est un **socle géométrique commun, déclaratif et versionné**, appelé automatiquement par le runtime aux frontières où un mesh devient un résultat persistant, un opérande booléen ou un fichier de fabrication.
 
 Le but n’est pas de rendre les outils dépendants les uns des autres. Au contraire, les outils doivent rester remplaçables, supprimables et ajoutables indépendamment.
+
+---
+
+## 0. Résumé exécutif
+
+Les audits de cette mission montrent trois familles de défauts à traiter ensemble sans les confondre :
+
+1. **Intégrité géométrique** : plusieurs outils produisent ou préparent des meshes avec des règles différentes. Des réparations locales peuvent modifier la matière, les cavités ou masquer un échec Boolean.
+2. **Masque 2D** : le contour binaire actuel est quantifié sur la grille avant lissage. Cela produit des bords crénelés ; à fort lissage, des trous et détails fins peuvent disparaître. Le chemin cible est un iso-contour sub-pixel puis une extrusion planaire commune certifiée.
+3. **Persistance** : les sauvegardes sérialisent trop de géométrie dupliquée, recompressent les mêmes données et le save manuel reste synchrone. L’autosave en thread réduit le blocage direct mais continue de consommer fortement CPU/GIL. La cible sépare révisions légères, blobs de géométrie, full save portable et recovery incrémental.
+
+Les décisions structurantes sont figées :
+
+- une frontière unique de mutation persistante : GeometryMutationGateway ;
+- des rôles et profils géométriques explicites ;
+- validation DIRECT avant toute adaptation ;
+- aucune réparation destructive implicite ;
+- ShellNestingTree comme vérité commune pour matière/cavités ;
+- le masque 2D devient producteur de PlanarRegion, pas moteur d’extrusion autonome ;
+- le save manuel sort du thread Qt ;
+- l’autosave devient un recovery minimal ;
+- les géométries persistantes sont dédupliquées par contenu ;
+- le fichier utilisateur v2 reste portable et atomique ; le recovery utilise un store incrémental séparé ;
+- toutes les migrations se font par jalons testables, avec observation avant enforcement lorsque le risque de régression est élevé.
+
+La priorité produit est d’éliminer en premier les corruptions silencieuses et les blocages utilisateur, puis de généraliser le socle sans régression.
 
 ---
 
@@ -3370,3 +3400,284 @@ Cibles Windows :
 - 0 sérialisation de RestoreHistory dans l’autosave.
 
 Si un full save dépasse 2 s à cause du débit physique d’un projet hors enveloppe, l’UI reste néanmoins totalement interactive et la progression est affichée.
+
+---
+
+## 31. Plan d’implémentation final
+
+L’implémentation doit être séquencée. Un jalon ne passe pas au suivant tant que ses critères de sortie ne sont pas satisfaits.
+
+### J0 — Baseline et garde-fous
+
+Conserver verts les quality gates, audits Creator, geometry_integrity_probe, project_save_lifecycle_probe, mask_2d_quality_probe et les workflows CI associés.
+
+Actions :
+
+- archiver les métriques Windows/Linux de référence ;
+- distinguer les tests globaux déjà rouges avant mission ;
+- créer une fixture minimale pour chaque bug reproduit ;
+- ne jamais valider une correction uniquement visuellement.
+
+Critère de sortie : tous les défauts P0/P1 ciblés sont reproductibles par test ou probe automatisé.
+
+### J1 — Persistence Phase A : supprimer les freezes actuels
+
+Implémenter sans attendre le format v2 complet :
+
+- save manuel hors thread Qt ;
+- PersistenceExecutor dédié ;
+- snapshot de persistence léger et cohérent ;
+- autosave RECOVERY sans RestoreHistory ni UndoHistory ;
+- suppression des deepcopy globaux/redondants ;
+- compression unique et rapide sur le chemin recovery ;
+- coalescing des autosaves ;
+- gestion correcte du dirty par révision ;
+- instrumentation détaillée.
+
+Critères de sortie :
+
+- UI interactive pendant save/autosave ;
+- aucun deepcopy global de ProjectStore dans l’autosave ;
+- aucun save manuel lourd sur le thread Qt ;
+- autosave du corpus CI inférieur à 2 s ;
+- aucune tâche géométrique bloquée derrière un autosave ;
+- panne d’écriture ou de replace sans corruption du dernier fichier valide.
+
+### J2 — Noyau geometry_contract pur
+
+Implémenter sans dépendance Qt :
+
+- rôles, profils et contrats ;
+- fingerprint ;
+- BASIC_MESH ;
+- rapports de topologie ;
+- certification Manifold directe ;
+- préparation conservatrice ;
+- ShellNestingTree ;
+- comparaison sémantique avant/après ;
+- codes d’erreur stables.
+
+Le socle démarre en **mode observation** : il mesure et rapporte sans bloquer les workflows legacy non encore migrés.
+
+Critère de sortie : les fixtures Hollow, touching cubes, Acoustic skirt, affine miroir/quasi-singulière et nesting profondeur >= 3 donnent les résultats attendus de ce CDC.
+
+### J3 — GeometryMutationGateway et frontière d’écriture
+
+Raccorder le gateway derrière DocumentFacade et les chemins communs de commit.
+
+Ordre :
+
+1. observation/audit ;
+2. warning sur contrat violé ;
+3. enforcement uniquement pour les chemins migrés ;
+4. suppression progressive des bypass.
+
+Aucune nouvelle écriture géométrique ne doit être ajoutée directement dans ModelStore.
+
+Critères de sortie :
+
+- CreatorTools migrés couverts sans validateur générique local ;
+- mutation persistante en place détectée et certificat invalidé correctement ;
+- preview non persistante clairement séparée du commit ;
+- aucune double application d’une réparation.
+
+### J4 — Migration des opérations à risque élevé
+
+Ordre recommandé :
+
+1. Boolean ;
+2. Hollow ;
+3. Simplify ;
+4. Extrude Down ;
+5. Separate mesh ;
+6. Lay Flat ;
+7. Repair Mesh ;
+8. Folding ;
+9. générateurs multi-corps / Mechanical.
+
+Pour chaque outil :
+
+- déclarer le contrat ;
+- retirer les validations génériques locales devenues redondantes ;
+- conserver seulement les règles métier propres à l’outil ;
+- tester entrée, preview, Apply, undo/redo, save/load et réutilisation par un autre outil.
+
+Critère de sortie : toutes les chaînes inter-outils de la section 21 passent sans dépendre de flags privés spécifiques à l’outil.
+
+### J5 — Refonte Masque 2D
+
+Implémenter :
+
+- champ d’activité continu ;
+- marching squares sub-pixel déterministe ;
+- gestion explicite des cas ambigus ;
+- signature topologique du footprint ;
+- lissage 2D adaptatif et borné ;
+- même footprint pour preview et Apply ;
+- dimensions physiques indépendantes du downsampling ;
+- extrusion via extrude_planar_regions_boolean_ready ;
+- commit via le socle géométrique.
+
+Supprimer ensuite l’extrusion privée et les flags de contournement devenus inutiles.
+
+Critères de sortie :
+
+- corpus masque complet vert ;
+- aucun trou ou composante supprimé par Smooth sans autorisation explicite ;
+- cercle/ellipse nettement moins axis-aligned que le pipeline actuel ;
+- sortie 3D certifiée et réutilisable dans deux Boolean chaînées ;
+- downsampling sans changement d’échelle physique.
+
+### J6 — Persistence v2 content-addressed
+
+Après stabilisation de l’identité/fingerprint géométrique :
+
+- ProjectRevision immuable ;
+- GeometryBlobRef ;
+- cache disque content-addressed ;
+- codec Zstandard versionné ;
+- fichier lpsproj v2 avec blobs préencodés et membres ZIP_STORED ;
+- RestoreHistory par références ;
+- GC mark-and-sweep ;
+- recovery SQLite/WAL incrémental ;
+- loader v1 conservé ;
+- migration v1 vers v2 testée.
+
+Critères de sortie :
+
+- save sans changement : 0 blob réencodé ;
+- modifier 1 mesh parmi 50 : 1 blob réencodé ;
+- géométrie supprimée et non référencée absente après full save/compaction ;
+- autosave courant p95 < 1 s ;
+- save manuel courant p95 < 1 s ;
+- save lourd p99 < 2 s dans l’enveloppe de release Windows ;
+- stall UI p95 < 16 ms.
+
+### J7 — Imports, exports et legacy
+
+Migrer les frontières restantes : Import 3MF et unités, imports maillage, exports fabrication, loaders legacy, contrôleurs hors Creator et mutations en place historiques.
+
+Toute donnée legacy non qualifiée entre avec un rôle UNKNOWN et suit une politique explicite ; elle ne devient pas automatiquement SOLID.
+
+Critère de sortie : l’audit des bypass ne trouve plus de chemin persistant non classé.
+
+### J8 — Enforcement global et nettoyage
+
+Seulement après les jalons précédents :
+
+- activer le Solid Commit Gate globalement ;
+- supprimer les anciens helpers de validation devenus morts ;
+- supprimer les flags _lps_skip_boolean_merge / boolean_skip_merge devenus inutiles ;
+- réduire les fallbacks legacy ;
+- documenter les exceptions restantes avec propriétaire et date de retrait ;
+- lancer la suite complète Windows/Linux et les benchmarks release.
+
+Critère de sortie : aucun comportement critique ne dépend d’un bypass non documenté.
+
+---
+
+## 32. Règles de développement de la mission
+
+Chaque changement suit obligatoirement :
+
+~~~text
+reproduction
+→ contrat/test attendu
+→ implémentation minimale
+→ test ciblé
+→ test d’intégration
+→ quality gate
+→ benchmark si chemin chaud
+→ commit
+~~~
+
+Règles :
+
+- une seule brique indépendante par changement cohérent ;
+- pas de refactor hors périmètre pendant une correction ;
+- aucun résultat déclaré valide sans test reproductible ;
+- toute adaptation géométrique doit être observable dans un rapport ;
+- toute donnée persistante nouvelle doit avoir version, ownership et politique de compatibilité ;
+- toute optimisation doit préserver le résultat fonctionnel avant d’être acceptée ;
+- les benchmarks utilisent des fixtures stables et comparent avant/après ;
+- les seuils Windows de release priment pour les budgets UX du produit distribué.
+
+---
+
+## 33. Matrice de priorité finale
+
+| Priorité | Sujet | Risque utilisateur | Dépendance |
+|---|---|---|---|
+| P0 | Corruption matière/cavités/Boolean silencieuse | pièce fabriquée incorrecte | J2 → J4 |
+| P0 | Save manuel bloquant / autosave qui fait ramer | perte de fluidité | J1 |
+| P0 | Lissage masque 2D destructif | géométrie différente de l’image | J5 |
+| P1 | Bords dentés masque 2D / échelle liée au downsampling | qualité géométrique insuffisante | J5 |
+| P1 | RestoreHistory dupliqué et save proportionnel à l’historique | fichiers lourds et saves très longs | J6 |
+| P1 | Bypass de mutation persistante | validation contournable | J3 → J7 |
+| P2 | Nettoyage flags/fallbacks legacy | dette technique | J8 |
+| P2 | Optimisations supplémentaires hors budgets | performance marginale | après validation fonctionnelle |
+
+La priorité ne permet pas de contourner les dépendances : le Masque 2D peut être prototypé tôt, mais son commit final doit passer par la frontière géométrique commune.
+
+---
+
+## 34. Définition de terminé
+
+La mission complète est terminée uniquement lorsque toutes les conditions suivantes sont satisfaites.
+
+### Architecture
+
+- GeometryMutationGateway est la frontière normale de mutation persistante ;
+- geometry_contract ne dépend ni de Qt ni d’un outil particulier ;
+- les rôles/profils publics sont documentés et versionnés ;
+- ShellNestingTree est partagé par les consommateurs de cavités ;
+- aucune nouvelle validation générique n’est dupliquée dans un outil.
+
+### Géométrie
+
+- les régressions P0/P1 documentées sont verrouillées par tests ;
+- les solides persistants des chemins migrés satisfont directement leur contrat ;
+- les préparations Boolean ne modifient jamais silencieusement la sémantique matière/cavité ;
+- les transformations singulières ou quasi singulières sont rejetées selon le profil ;
+- les opérations multi-corps utilisent un contrat explicite.
+
+### Masque 2D
+
+- contour sub-pixel en production ;
+- Smooth topologiquement sûr ;
+- preview et Apply partagent le même footprint ;
+- dimensions physiques invariantes au downsampling ;
+- extrusion 3D commune ;
+- Boolean chaînée validée.
+
+### Persistance
+
+- save manuel non bloquant ;
+- autosave recovery incrémental ;
+- aucun deepcopy global du projet ;
+- RestoreHistory dédupliqué ;
+- format v2 content-addressed ou architecture équivalente démontrant les mêmes propriétés ;
+- suppression réelle des blobs non référencés lors du full save/compaction ;
+- récupération après crash testée ;
+- compatibilité lecture v1 maintenue.
+
+### Performance
+
+- budgets section 30 respectés sur Windows release ;
+- absence de stall UI majeur pendant save/autosave ;
+- coût du save chaud proportionnel au delta ;
+- 0 recompression d’une géométrie inchangée.
+
+### Validation projet
+
+- tests ciblés verts ;
+- chaînes inter-outils vertes ;
+- quality_gate vert ;
+- audits Creator verts ;
+- workflows CI dédiés verts ;
+- suite complète analysée, avec toute panne préexistante distinguée d’une régression de mission ;
+- documentation d’architecture mise à jour ;
+- aucune limitation connue critique masquée.
+
+À ce point seulement, le CDC peut passer de **finalisé pour implémentation** à **implémenté et validé**.
+

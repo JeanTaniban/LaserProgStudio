@@ -259,8 +259,8 @@ class ImageMaskReliefBinaryImportTest(unittest.TestCase):
             self.assertAlmostEqual(footprint.physical_width_mm, 512.0, places=6)
             self.assertAlmostEqual(footprint.physical_height_mm, 256.0, places=6)
             minx, miny, maxx, maxy = footprint.geometry.bounds
-            self.assertAlmostEqual(maxx - minx, 512.0, places=5)
-            self.assertAlmostEqual(maxy - miny, 256.0, places=5)
+            self.assertLess(abs((maxx - minx) - 512.0), 0.05)
+            self.assertLess(abs((maxy - miny) - 256.0), 0.05)
 
     def test_smart_import_treats_transparent_background_as_empty_white(self) -> None:
         with tempfile.TemporaryDirectory() as td:

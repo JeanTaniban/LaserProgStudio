@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from .image_mask_relief_loading import _clamp_float, _otsu_threshold, _resample_filter
+from .image_mask_relief_loading import _clamp_float, _resolve_activity_threshold, _resample_filter
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,15 +86,11 @@ def _load_activity(
     activity = np.asarray(activity, dtype=np.float64)
 
     hist = np.bincount(np.asarray(activity, dtype=np.uint8).ravel(), minlength=256).tolist()
-    if levels is None:
-        threshold_norm = _clamp_float(float(binary_threshold or 0.5), 0.0, 1.0)
-    else:
-        level = _clamp_float(float(levels), 0.0, 100.0)
-        automatic = _otsu_threshold(hist)
-        threshold_index = int(round(float(automatic) + (50.0 - level) * 1.9))
-        threshold_index = max(8, min(247, threshold_index))
-        threshold_norm = (float(threshold_index) + 0.5) / 255.0
-
+    _threshold_level, threshold_norm = _resolve_activity_threshold(
+        hist,
+        binary_threshold=binary_threshold,
+        levels=levels,
+    )
     return activity, source_size, bool(downsampled), float(threshold_norm)
 
 

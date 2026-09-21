@@ -181,3 +181,18 @@ Persistence must be revision-based and incremental.
 - autosaves are coalesced and manual saves have priority;
 - persistence performance is measured by main-thread stall, revision capture, changed-blob encoding, bytes written and atomic commit time;
 - release targets are sub-20 ms scheduling, no perceptible UI freeze, and 1–2 second incremental save latency for the standard Windows project envelope.
+
+### Persistence container decision
+
+The target persistence architecture is hybrid:
+
+- user-facing `.lpsproj` v2 stays a portable atomic ZIP package;
+- geometry is stored as content-addressed Zstandard-compressed blobs and the outer ZIP stores those blobs without recompressing them;
+- manual saves run asynchronously and only copy already-encoded blobs plus small manifests;
+- autosave/recovery uses a separate incremental SQLite/WAL store containing only the current recovery state;
+- autosave never serializes technical undo/redo or full persistent restore history;
+- geometry blob encoding happens when geometry changes, not when Save is clicked;
+- unchanged blobs are never re-encoded or recompressed;
+- project revisions are immutable lightweight reference graphs, so save workers never traverse a live mutable `ProjectStore`.
+
+This split is benchmark-driven: ZIP is efficient for portable full writes of pre-encoded blobs, while SQLite/WAL is substantially better for frequent delta-only recovery transactions.

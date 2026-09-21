@@ -825,6 +825,10 @@ Le diagnostic détaillé peut rester dans les logs.
 
 ### Déjà implémenté sur branche
 
+- contrat de taille physique explicite et compatible legacy ;
+- preview 512 hors thread Qt avec coalescing ;
+- Save/Reload, Undo/Redo et 3MF validés ;
+- quality gate global Ubuntu validé ;
 - marching squares sub-pixel ;
 - interpolation linéaire ;
 - asymptotic decider bilinéaire ;
@@ -915,19 +919,23 @@ Ces choix ne doivent plus être rediscutés sans nouvelle preuve de régression.
 
 ## 28. Décisions encore ouvertes
 
-### O1 — taille physique par défaut
+### O1 — exposition UX de la taille physique
 
-Le comportement actuel de la branche utilise encore implicitement le pixel source pour dériver une dimension physique.
+Le **contrat interne est désormais verrouillé** :
 
-Ce choix ne doit pas être fusionné comme contrat UX définitif.
+- `MaskPhysicalSize` existe ;
+- une taille explicite peut être fournie par API ;
+- sans taille explicite, le dialogue conserve le comportement historique basé sur un maximum de 512 px/mm ;
+- la résolution d’analyse est indépendante de cette taille ;
+- le mesh persiste la largeur/hauteur physiques résolues dans ses metadata.
 
-Décision cible recommandée :
+Reste ouvert uniquement le choix UX :
 
-- introduire une `MaskPhysicalSize` explicite ;
+- exposer `Largeur (mm)` dans le dialogue ;
 - conserver le ratio par défaut ;
-- utiliser une taille initiale compatible avec l’ancien comportement ;
-- stocker cette taille dans la requête d’import ;
-- rendre ensuite la résolution totalement libre.
+- éventuellement permettre de déverrouiller largeur/hauteur.
+
+Cette évolution UI n’est pas requise pour corriger la régression actuelle, mais le contrat de données est prêt.
 
 ### O2 — résolution Apply
 
@@ -1010,40 +1018,49 @@ Statut : **implémenté / CI verte**
 
 ### WP-D — Taille physique
 
-Statut : **à finaliser avant merge**
+Statut : **implémenté / CI verte**
 
-Livrables :
+Livrables validés :
 
 - `MaskPhysicalSize` ;
-- migration compatible ;
-- width/height contract ;
-- tests de résolution invariants ;
-- UI future documentée.
+- migration compatible avec la taille historique ;
+- séparation taille physique / résolution d’analyse ;
+- metadata de taille sur le mesh ;
+- tests de résolution invariants.
+
+L’exposition width/height dans l’UI reste une amélioration produit séparée.
 
 ### WP-E — Preview / threading
 
-Statut : **à faire**
+Statut : **partiellement implémenté**
 
-Livrables :
+Déjà fait :
+
+- debounce ;
+- worker dédié au dialogue ;
+- résultats obsolètes ignorés ;
+- tâches en attente coalescées ;
+- preview 512 calculé hors thread Qt.
+
+Reste :
 
 - cache activité/footprint ;
-- worker ;
-- generation id ;
-- preview rapide ;
-- preview final ;
-- aucun calcul lourd bloquant Qt.
+- éventuel preview haute précision secondaire ;
+- mesure du stall UI réel sous Windows.
 
 ### WP-F — Interopérabilité
 
-Statut : **à faire**
+Statut : **implémenté / CI verte**
 
-Livrables :
+Validé :
 
 - Save/Reload ;
 - Undo/Redo ;
 - export 3MF ;
-- réimport ;
-- fingerprint stable.
+- réimport 3MF ;
+- absence de dépendance à `boolean_skip_merge`.
+
+Le fingerprint géométrique commun reste rattaché au chantier global Geometry Integrity.
 
 ### WP-G — Corpus réel
 
@@ -1085,15 +1102,16 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 - [x] première Boolean ;
 - [x] Boolean chaînée ;
 - [x] Save/Reload ;
-- [ ] Undo/Redo ;
+- [x] Undo/Redo ;
 - [x] export/réimport 3MF.
 
 ### Gate G4 — UX
 
-- [ ] contrat taille physique figé ;
+- [x] contrat taille physique interne figé et compatible ;
 - [ ] résolution Apply figée ;
-- [ ] preview cohérent avec Apply ;
-- [ ] aucun blocage UI excessif.
+- [x] preview et Apply utilisent le même pipeline/contrat de taille ;
+- [x] preview lourd déplacé hors thread Qt ;
+- [ ] test manuel Windows : absence de lag perceptible.
 
 ### Gate G5 — qualité
 
@@ -1101,7 +1119,8 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 - [x] tests Windows ;
 - [x] corpus adversarial synthétique actuel vert ;
 - [ ] corpus réel utilisateur vert ;
-- [ ] quality gate global du projet ;
+- [x] quality gate global du projet sur Ubuntu ;
+- [x] geometry-integrity-audit vert Linux/Windows ;
 - [ ] test manuel Windows sur UI réelle.
 
 ---

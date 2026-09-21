@@ -125,8 +125,10 @@ def _polygon_metrics(geom) -> dict[str, float | int]:
         polys = [g for g in getattr(geom, "geoms", []) if isinstance(g, Polygon)]
     segments = []
     vertices = 0
+    holes = 0
     perimeter = 0.0
     for poly in polys:
+        holes += len(poly.interiors)
         for ring in (poly.exterior, *poly.interiors):
             coords = list(ring.coords)
             vertices += max(0, len(coords) - 1)
@@ -141,10 +143,14 @@ def _polygon_metrics(geom) -> dict[str, float | int]:
     axis_length = sum(length for dx, dy, length in segments if abs(dx) <= 1e-12 or abs(dy) <= 1e-12)
     return {
         "polygon_count": len(polys),
+        "hole_count": holes,
+        "euler_characteristic": len(polys) - holes,
         "ring_vertices": vertices,
         "perimeter": perimeter,
         "axis_aligned_fraction": axis_length / max(perimeter, 1e-12),
         "area": float(sum(poly.area for poly in polys)),
+        "is_valid": bool(getattr(geom, "is_valid", False)),
+        "minimum_clearance": float(getattr(geom, "minimum_clearance", 0.0) or 0.0),
     }
 
 

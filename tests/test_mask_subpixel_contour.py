@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 import _path_setup  # noqa: F401
-from laserprog_studio.geometry_ops.image_mask_relief_loading import _otsu_threshold
+from laserprog_studio.geometry_ops.image_mask_relief_loading import _otsu_threshold, _resolve_activity_threshold
 from laserprog_studio.geometry_ops.image_mask_relief_contour import (
     _ambiguous_case_pairs,
     _bilinear_sample,
@@ -58,3 +58,27 @@ def test_otsu_midpoint_avoids_dark_peak_bias_on_separated_bands() -> None:
     hist[220] = 50
     value = _otsu_threshold(hist)
     assert 119 <= value <= 121
+
+
+def test_shared_threshold_contract_places_otsu_on_bin_boundary() -> None:
+    hist = [0] * 256
+    hist[0] = 50
+    hist[255] = 50
+    threshold_level, threshold_norm = _resolve_activity_threshold(
+        hist,
+        binary_threshold=0.5,
+        levels=50,
+    )
+    assert threshold_level == 127.5
+    assert abs(threshold_norm - 0.5) <= 1.0e-12
+
+
+def test_shared_threshold_contract_keeps_explicit_threshold_continuous() -> None:
+    hist = [0] * 256
+    threshold_level, threshold_norm = _resolve_activity_threshold(
+        hist,
+        binary_threshold=0.7,
+        levels=None,
+    )
+    assert abs(threshold_level - 178.5) <= 1.0e-12
+    assert abs(threshold_norm - 0.7) <= 1.0e-12

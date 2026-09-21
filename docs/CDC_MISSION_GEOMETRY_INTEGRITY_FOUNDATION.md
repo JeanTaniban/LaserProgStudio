@@ -2818,3 +2818,111 @@ Le plan cible combine donc :
 - recovery store minimal ;
 - RestoreHistory dédupliqué et borné.
 
+### 30.28 Plan de correction persistence en deux niveaux
+
+Le projet ne doit pas attendre le format v2 complet pour supprimer les freezes actuels.
+
+#### Phase A — corrections immédiates, format v1 conservé
+
+Objectif : rendre le comportement actuel beaucoup moins mauvais sans changer encore le format utilisateur.
+
+1. **Save manuel hors thread Qt**
+   - résolution du chemin dans l’UI ;
+   - lancement du writer dans un executor persistence dédié ;
+   - indicateur non modal `Saving…` ;
+   - callback transactionnel ;
+   - `dirty=False` uniquement si la révision sauvegardée est toujours courante.
+
+2. **Autosave en vrai mode RECOVERY**
+   - ne pas sérialiser `SceneDocument.snapshots` ;
+   - ne pas sérialiser l’historique sémantique complet ;
+   - ne jamais copier `ModelStore._history` / `_redo_history` ;
+   - ne pas embarquer previews/caches/transient state.
+
+3. **Supprimer les deepcopies redondants du writer**
+   - le writer actuel appelle `scene.snapshot()`, qui deep-copy les meshes courants ;
+   - il deep-copy ensuite encore chaque `snapshot_meshes` avant `_write_mesh_collection()` ;
+   - ces copies doivent disparaître du writer.
+   
+4. **Compression autosave minimale**
+   - recovery privilégie latence/CPU à la taille ;
+   - aucun double DEFLATE ;
+   - utiliser temporairement un encodage rapide/non compressé si nécessaire jusqu’au blob codec v2.
+
+5. **Executor dédié**
+   - autosave ne partage plus le mono-worker avec Boolean/Simplify/Hollow ;
+   - coalescing des autosaves ;
+   - save manuel prioritaire.
+
+6. **Instrumentation**
+   - revision capture ;
+   - encode ;
+   - compression ;
+   - bytes ;
+   - write ;
+   - replace ;
+   - max main-thread stall.
+
+Cette phase doit déjà supprimer l’essentiel du lag visible actuel.
+
+#### Phase B — persistence v2 incrémentale
+
+Objectif : garantir la performance indépendamment du nombre historique de scènes/objets.
+
+- ProjectRevision immuable ;
+- geometry blobs content-addressed ;
+- Zstandard rapide ;
+- transaction incrémentale ;
+- RestoreHistory = références de blobs ;
+- GC par références ;
+- autosave recovery incrémental ;
+- save normal proportionnel au delta.
+
+### 30.29 Cohérence concurrente des autosaves
+
+Le code actuel fait `copy.deepcopy(project)` **dans le worker** pendant que l’UI peut redevenir active.
+
+Après le démarrage de l’autosave, l’utilisateur peut créer une nouvelle modification pendant que le worker traverse encore :
+
+- `project.scenes` ;
+- `SceneDocument.history` ;
+- `ModelStore._committed_meshes` ;
+- les listes vertices/triangles mutables.
+
+Le snapshot courant n’est donc pas une vraie frontière transactionnelle.
+
+La cible interdit à un worker de parcourir l’objet applicatif vivant.
+
+Règle :
+
+```text
+Qt thread:
+  capture immutable/light revision references
+  ↓
+worker:
+  serialize only that frozen revision
+```
+
+Le worker ne lit jamais directement un `ProjectStore` qui continue d’être modifié.
+
+Cette règle est nécessaire à la fois pour :
+
+- la performance ;
+- la cohérence de l’autosave ;
+- l’absence de races entre mutation et sérialisation.
+
+### 30.30 Critères d’acceptation Phase A
+
+Avant même le format v2 :
+
+- save manuel : aucun travail lourd sur le thread UI ;
+- autosave : aucun `copy.deepcopy(project)` ;
+- autosave : aucun restore snapshot ancien ;
+- autosave : aucun undo/redo technique ;
+- aucune tâche de géométrie bloquée derrière un autosave ;
+- save atomique transactionnel corrigé ;
+- 0 deepcopy redondant de snapshot dans le writer ;
+- sur le corpus CI de référence, autosave doit rester < 2 s ;
+- l’UI doit rester interactive pendant toute écriture ;
+- une édition effectuée pendant le save laisse le projet dirty à la fin si elle est plus récente que la révision sauvegardée.
+

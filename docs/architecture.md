@@ -136,3 +136,32 @@ The architectural rules are:
 See `docs/CDC_MISSION_GEOMETRY_INTEGRITY_FOUNDATION.md` for the detailed target
 architecture, migration plan and validation criteria.
 
+## Project persistence lifecycle
+
+Project persistence must serialize an explicit persistence model, not a generic
+deep copy of the live application state.
+
+Architectural rules:
+
+- technical undo/redo, previews, render caches, drag state, clipboard state and
+  rebuildable visual proxies are transient and must never enter a project save;
+- recovery autosave contains the current committed project state only and does
+  not retain the full semantic restore history;
+- persistent restore history is distinct from Ctrl+Z and is bounded by a
+  retention policy;
+- scene/history manifests reference content-addressed geometry blobs rather than
+  storing full duplicate mesh payloads for every restore point;
+- every full save performs mark-and-sweep over blobs referenced by current
+  scenes, retained restore history and pinned checkpoints;
+- deleting a scene or pruning the last history reference to a mesh removes its
+  unshared geometry blob from the next saved archive;
+- save diagnostics must attribute cost to snapshot capture, mesh encoding,
+  compression and archive writing;
+- mesh payloads are compressed once; nested compression is not a persistence
+  contract;
+- project writes remain atomic.
+
+The target service is `ProjectPersistenceService`, with explicit `FULL_SAVE` and
+`RECOVERY_SAVE` modes. See
+`docs/CDC_MISSION_GEOMETRY_INTEGRITY_FOUNDATION.md` for the measured retention
+evidence and detailed migration plan.

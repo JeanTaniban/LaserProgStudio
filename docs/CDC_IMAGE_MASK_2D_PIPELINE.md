@@ -856,3 +856,227 @@ Ce chantier ne doit pas devenir :
 - une simplification générale de mesh.
 
 Il doit rester un pipeline fiable de conversion d’un masque raster en footprint manufacturable puis en solide.
+
+---
+
+## 27. Décisions verrouillées
+
+Ces choix ne doivent plus être rediscutés sans nouvelle preuve de régression.
+
+| sujet | décision |
+|---|---|
+| vectorisation | iso-contour sub-pixel, jamais union de rectangles pixel |
+| ambiguïtés 5/10 | asymptotic decider bilinéaire |
+| classification face | rééchantillonnage bilinéaire du même champ |
+| Smooth | opération 2D uniquement |
+| topologie | backoff si composants/trous changent |
+| extrusion | générateur planar commun |
+| kernel | sortie finale directement certifiable |
+| merge hack | aucun `boolean_skip_merge` spécifique au masque |
+| preview | dérivé du footprint, pas d’un pipeline parallèle |
+| dimension | indépendante de la résolution d’analyse |
+
+---
+
+## 28. Décisions encore ouvertes
+
+### O1 — taille physique par défaut
+
+Le comportement actuel de la branche utilise encore implicitement le pixel source pour dériver une dimension physique.
+
+Ce choix ne doit pas être fusionné comme contrat UX définitif.
+
+Décision cible recommandée :
+
+- introduire une `MaskPhysicalSize` explicite ;
+- conserver le ratio par défaut ;
+- utiliser une taille initiale compatible avec l’ancien comportement ;
+- stocker cette taille dans la requête d’import ;
+- rendre ensuite la résolution totalement libre.
+
+### O2 — résolution Apply
+
+Les mesures rendent 1024 plausible (<1 s sur fixture simple CI), mais la décision finale dépend :
+
+- du corpus complexe ;
+- du coût polygonize/unary_union ;
+- de l’UX async ;
+- de la taille finale des meshes.
+
+Tant que O1 n’est pas réglé, ne pas changer la résolution Apply par défaut uniquement pour gagner du détail.
+
+### O3 — nettoyage du bruit
+
+Ne pas introduire de suppression automatique de petits îlots dans Smooth.
+
+Le nettoyage doit devenir un paramètre métier séparé et mesuré en mm/mm².
+
+### O4 — arrondi réel des courbes
+
+Le Smooth actuel est principalement un simplificateur topologiquement sûr.
+
+Si un véritable fairing/rounding est souhaité :
+
+- en faire une étape distincte ;
+- mesurer shrink/overshoot ;
+- garder les mêmes gates topologiques ;
+- ne pas réintroduire un buffer morphologique destructif.
+
+---
+
+## 29. Work packages
+
+### WP-A — Contour robuste
+
+Statut : **implémenté / CI verte**
+
+- activité continue ;
+- marching squares ;
+- interpolation ;
+- asymptotic decider ;
+- bilinear face classification ;
+- clamp aux bounds ;
+- tests unitaires.
+
+Gate :
+
+- Linux + Windows ;
+- damier diagonal ;
+- bord image ;
+- cercle anti-aliasé.
+
+### WP-B — Smooth sûr
+
+Statut : **implémenté, corpus en extension**
+
+- signature composants/trous ;
+- area budget ;
+- symmetric difference ;
+- Hausdorff ;
+- backoff.
+
+Gate :
+
+- trou 1 px ;
+- gap 1 px ;
+- trait fin ;
+- anneau ;
+- étoile concave.
+
+### WP-C — Solidification commune
+
+Statut : **implémenté / CI verte**
+
+- PlanarRegion ;
+- extrusion commune ;
+- Manifold direct ;
+- Boolean chaînée ;
+- aucun skip-merge privé.
+
+### WP-D — Taille physique
+
+Statut : **à finaliser avant merge**
+
+Livrables :
+
+- `MaskPhysicalSize` ;
+- migration compatible ;
+- width/height contract ;
+- tests de résolution invariants ;
+- UI future documentée.
+
+### WP-E — Preview / threading
+
+Statut : **à faire**
+
+Livrables :
+
+- cache activité/footprint ;
+- worker ;
+- generation id ;
+- preview rapide ;
+- preview final ;
+- aucun calcul lourd bloquant Qt.
+
+### WP-F — Interopérabilité
+
+Statut : **à faire**
+
+Livrables :
+
+- Save/Reload ;
+- Undo/Redo ;
+- export 3MF ;
+- réimport ;
+- fingerprint stable.
+
+### WP-G — Corpus réel
+
+Statut : **à faire**
+
+Inclure plusieurs masques réels :
+
+- logos ;
+- scans ;
+- captures JPG ;
+- lignes fines ;
+- grands formats ;
+- faible contraste.
+
+---
+
+## 30. Gates de merge
+
+La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
+
+### Gate G1 — algorithme
+
+- [x] plus d’union de rectangles pixel en production ;
+- [x] marching squares sub-pixel ;
+- [x] asymptotic decider ;
+- [x] classification bilinéaire ;
+- [x] footprint borné physiquement.
+
+### Gate G2 — topologie
+
+- [x] trou conservé sous Smooth élevé sur fixtures actuels ;
+- [x] gap entre composants conservé ;
+- [x] contact diagonal non soudé ;
+- [x] sortie Manifold directe.
+
+### Gate G3 — opérations
+
+- [x] première Boolean ;
+- [x] Boolean chaînée ;
+- [ ] Save/Reload ;
+- [ ] Undo/Redo ;
+- [ ] export/réimport 3MF.
+
+### Gate G4 — UX
+
+- [ ] contrat taille physique figé ;
+- [ ] résolution Apply figée ;
+- [ ] preview cohérent avec Apply ;
+- [ ] aucun blocage UI excessif.
+
+### Gate G5 — qualité
+
+- [x] tests Linux ;
+- [x] tests Windows ;
+- [ ] adversarial corpus complet vert ;
+- [ ] quality gate global du projet ;
+- [ ] test manuel Windows sur UI réelle.
+
+---
+
+## 31. Règle de handoff
+
+Tout agent reprenant ce chantier doit commencer par :
+
+1. lire ce CDC ;
+2. vérifier les derniers runs `mask-2d-audit` ;
+3. ne pas réintroduire l’ancien vectoriseur pixel-box ;
+4. ne pas réintroduire `boolean_skip_merge` ;
+5. ajouter une fixture avant toute correction d’un nouveau cas ;
+6. mettre à jour la section Gates après validation.
+

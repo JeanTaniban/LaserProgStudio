@@ -250,7 +250,20 @@ Il est interdit d’utiliser Smooth comme filtre anti-bruit implicite.
 
 ### 6.1 Mode automatique
 
-`Levels=50` utilise le seuil automatique actuel basé sur Otsu.
+`Levels=50` utilise Otsu avec une règle déterministe de plateau.
+
+Otsu peut produire une plage entière de seuils ayant exactement le même score,
+notamment sur un masque noir/blanc pur. Il est interdit de choisir arbitrairement
+le premier seuil optimal.
+
+Règle :
+
+- détecter le plateau optimal ;
+- choisir son milieu ;
+- cas noir/blanc 0/255 : seuil attendu ≈ 127.
+
+Ce point est topologique : choisir un seuil proche de 0 peut relier artificiellement
+des pixels diagonaux dans le champ bilinéaire.
 
 ### 6.2 Déplacement utilisateur
 
@@ -1034,6 +1047,7 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 - [x] plus d’union de rectangles pixel en production ;
 - [x] marching squares sub-pixel ;
 - [x] asymptotic decider ;
+- [x] plateau Otsu stabilisé par midpoint ;
 - [x] classification bilinéaire ;
 - [x] footprint borné physiquement.
 

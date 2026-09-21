@@ -260,10 +260,13 @@ Règle :
 
 - détecter le plateau optimal ;
 - choisir son milieu ;
-- cas noir/blanc 0/255 : seuil attendu ≈ 127.
+- cas noir/blanc 0/255 : index Otsu attendu ≈ 127 ;
+- iso-niveau continu utilisé par le contour : **127,5**.
 
-Ce point est topologique : choisir un seuil proche de 0 peut relier artificiellement
-des pixels diagonaux dans le champ bilinéaire.
+Otsu sépare les bins `<= t` et `> t`. Le contour continu doit donc être placé
+entre les bins `t` et `t+1`, soit `t + 0,5`. Utiliser directement `t`
+réintroduit un biais topologique : un damier diagonal peut se connecter alors
+qu'il doit rester séparé.
 
 ### 6.2 Déplacement utilisateur
 

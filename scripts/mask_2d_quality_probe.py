@@ -34,6 +34,86 @@ def _manifold(mesh) -> dict[str, object]:
         return {"valid": False, "status": f"{type(exc).__name__}: {exc}"}
 
 
+def _marching_squares_geometry(path: Path, *, threshold: float = 127.5):
+    """Prototype sub-pixel contour extraction from grayscale activity.
+
+    Diagnostic only: this validates the replacement architecture before
+    production code is changed.
+    """
+    from shapely.geometry import LineString
+    from shapely.ops import polygonize, unary_union
+
+    with Image.open(path) as img:
+        rgba = img.convert("RGBA")
+        white = Image.new("RGBA", rgba.size, (255,255,255,255))
+        gray = Image.alpha_composite(white, rgba).convert("L")
+        arr = 255.0 - np.asarray(gray, dtype=np.float64)
+
+    h, w = arr.shape
+    # Pad with empty samples. Original samples live at pixel centers.
+    a = np.zeros((h+2,w+2), dtype=np.float64)
+    a[1:-1,1:-1] = arr
+
+    def value(r:int,c:int)->float:
+        return float(a[r,c])
+
+    def point(r:int,c:int)->tuple[float,float]:
+        # padded sample (1,1) == original pixel center (0.5,0.5)
+        return (float(c)-0.5, float(r)-0.5)
+
+    def interp(p0,p1,v0,v1):
+        dv=float(v1-v0)
+        if abs(dv) <= 1e-12:
+            t=0.5
+        else:
+            t=(float(threshold)-float(v0))/dv
+        t=max(0.0,min(1.0,t))
+        return (p0[0]+(p1[0]-p0[0])*t, p0[1]+(p1[1]-p0[1])*t)
+
+    segments=[]
+    # edge ids: 0 top, 1 right, 2 bottom, 3 left.
+    base_cases={
+        0:(), 1:((3,2),), 2:((2,1),), 3:((3,1),),
+        4:((0,1),), 6:((0,2),), 7:((0,3),),
+        8:((3,0),), 9:((0,2),), 11:((0,1),),
+        12:((3,1),), 13:((2,1),), 14:((3,2),), 15:(),
+    }
+    for rr in range(h+1):
+        for cc in range(w+1):
+            # corners TL,TR,BR,BL
+            vals=[value(rr,cc),value(rr,cc+1),value(rr+1,cc+1),value(rr+1,cc)]
+            pts=[point(rr,cc),point(rr,cc+1),point(rr+1,cc+1),point(rr+1,cc)]
+            bits=[v>=threshold for v in vals]
+            case=(8 if bits[0] else 0)|(4 if bits[1] else 0)|(2 if bits[2] else 0)|(1 if bits[3] else 0)
+            if case in (0,15):
+                continue
+            edges={
+                0:interp(pts[0],pts[1],vals[0],vals[1]),
+                1:interp(pts[1],pts[2],vals[1],vals[2]),
+                2:interp(pts[3],pts[2],vals[3],vals[2]),
+                3:interp(pts[0],pts[3],vals[0],vals[3]),
+            }
+            if case in (5,10):
+                center=sum(vals)/4.0
+                # Choose topology using the scalar center (simple asymptotic-style decider).
+                if case==5:
+                    pairs=((0,3),(1,2)) if center>=threshold else ((0,1),(3,2))
+                else:
+                    pairs=((0,1),(3,2)) if center>=threshold else ((0,3),(1,2))
+            else:
+                pairs=base_cases.get(case,())
+            for e0,e1 in pairs:
+                p0,p1=edges[e0],edges[e1]
+                if math.hypot(p1[0]-p0[0],p1[1]-p0[1])>1e-10:
+                    segments.append(LineString([p0,p1]))
+    if not segments:
+        return None
+    polys=list(polygonize(segments))
+    if not polys:
+        return None
+    return unary_union(polys)
+
+
 def _polygon_metrics(geom) -> dict[str, float | int]:
     from shapely.geometry import Polygon, MultiPolygon
     polys = []
@@ -188,6 +268,14 @@ def main() -> int:
                 "radial_error": _circle_radial_error(geom,cx=80.0,cy=80.0,radius=60.0),
             }
         report["circle_quality"] = circle_rows
+
+        # Prototype comparison: current pixel-box vectorization versus sub-pixel
+        # marching-squares contouring on the same antialiased circle source.
+        proto = _marching_squares_geometry(shapes["circle_aa"], threshold=127.5)
+        report["circle_subpixel_prototype"] = {
+            **_polygon_metrics(proto),
+            "radial_error": _circle_radial_error(proto,cx=80.0,cy=80.0,radius=60.0),
+        }
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

@@ -246,12 +246,16 @@ class ImageMaskImportLayer:
             except Exception:
                 pass
             stats = result.stats
+            accepted_smooth = float((result.mesh.metadata or {}).get("mask_smooth_accepted", float(smooth)))
             msg = (
                 f"[MASK] Imported {Path(path).name} | binary=1 grid={stats.width}x{stats.height} "
                 f"active={stats.active_pixels} vertices={stats.vertices} triangles={stats.triangles} "
                 f"height={stats.max_height_mm:g}mm levels={levels if levels is not None else 'threshold'} "
-                f"smooth={float(smooth):g} threshold={stats.binary_threshold:.3f}"
+                f"smooth={float(smooth):g}"
             )
+            if accepted_smooth + 1.0e-9 < float(smooth):
+                msg += f"→{accepted_smooth:g}"
+            msg += f" threshold={stats.binary_threshold:.3f}"
             if stats.downsampled:
                 msg += f" | downsampled from {stats.source_width}x{stats.source_height}"
             self.ui_log(msg)

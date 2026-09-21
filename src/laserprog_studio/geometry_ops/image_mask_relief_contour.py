@@ -209,9 +209,9 @@ def _subpixel_footprint(
                 center = sum(vals) / 4.0
                 # Resolve saddle cells deterministically from the scalar center.
                 if case == 5:
-                    pairs = ((0, 3), (1, 2)) if center >= threshold else ((0, 1), (3, 2))
+                    pairs = ((0, 3), (1, 2)) if center > threshold else ((0, 1), (3, 2))
                 else:
-                    pairs = ((0, 1), (3, 2)) if center >= threshold else ((0, 3), (1, 2))
+                    pairs = ((0, 1), (3, 2)) if center > threshold else ((0, 3), (1, 2))
             else:
                 pairs = standard_cases.get(case, ())
 

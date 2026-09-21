@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from laserprog_studio.boolean_ops import is_closed_triangle_mesh
 from laserprog_studio.geometry_ops.boolean_topology_contract import analyze_work_mesh_boolean_topology
 from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh
+from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint
 from laserprog_studio.geometry_ops.image_mask_relief_loading import _load_binary_mask
 from laserprog_studio.geometry_ops.image_mask_relief_vector import _binary_mask_to_smoothed_geometry
 from laserprog_studio.geometry_ops.manifold_contract import construct_manifold, manifold_is_valid
@@ -223,11 +224,17 @@ def _write_shapes(root: Path) -> dict[str, Path]:
 
 def _case(path: Path, smooth: float) -> dict[str, object]:
     try:
-        mask, _src, _down, _thr = _load_binary_mask(
-            path, invert=False, binary_threshold=0.5, levels=50,
-            smooth=smooth, max_grid_size=0
+        footprint = build_binary_mask_footprint(
+            path,
+            pixel_size_mm=1.0,
+            invert=False,
+            binary_threshold=0.5,
+            levels=50,
+            smooth=smooth,
+            max_grid_size=0,
         )
-        geom, active = _binary_mask_to_smoothed_geometry(mask, pixel_size_mm=1.0, smooth=smooth)
+        geom = footprint.geometry
+        active = int(footprint.active_pixels)
         result = build_mask_relief_mesh(
             path, max_height_mm=10.0, pixel_size_mm=1.0, binary=True,
             levels=50, smooth=smooth, max_grid_size=0
@@ -274,11 +281,19 @@ def main() -> int:
         circle_rows={}
         path=shapes["circle_aa"]
         for smooth in (0.0,15.0,35.0,50.0,75.0,100.0):
-            mask,*_ = _load_binary_mask(path, invert=False, binary_threshold=0.5, levels=50, smooth=smooth, max_grid_size=0)
-            geom,_ = _binary_mask_to_smoothed_geometry(mask,pixel_size_mm=1.0,smooth=smooth)
+            footprint = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=smooth,
+                max_grid_size=0,
+            )
+            geom = footprint.geometry
             circle_rows[str(int(smooth))] = {
                 **_polygon_metrics(geom),
-                "radial_error": _circle_radial_error(geom,cx=80.0,cy=80.0,radius=60.0),
+                "radial_error": _circle_radial_error(geom,cx=0.0,cy=0.0,radius=60.0),
             }
         report["circle_quality"] = circle_rows
 

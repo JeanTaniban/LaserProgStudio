@@ -128,9 +128,9 @@ class ImageMaskImportLayer:
                 preview_status.setText("Computing preview…")
 
                 def _worker():
-                    from laserprog_studio.geometry_ops.image_mask_relief import render_mask_preview_image
+                    from laserprog_studio.geometry_ops.image_mask_relief import build_mask_preview
 
-                    return render_mask_preview_image(
+                    image, footprint = build_mask_preview(
                         request_path,
                         invert=request_invert,
                         levels=request_levels,
@@ -139,12 +139,22 @@ class ImageMaskImportLayer:
                         max_preview_size=(max_w, max_h),
                         legacy_size_cap_px=512,
                     )
+                    smoothing = footprint.smoothing_report
+                    return (
+                        image,
+                        float(smoothing.accepted_level),
+                        bool(smoothing.fallback_used),
+                    )
 
-                def _success(image) -> None:
+                def _success(payload) -> None:
+                    image, accepted_smooth, smooth_limited = payload
                     preview_label.setText("")
                     preview_label.setPixmap(_pil_to_pixmap(image))
+                    smooth_text = f"Smooth {int(request_smooth)}"
+                    if smooth_limited:
+                        smooth_text += f" → {accepted_smooth:g} (topology protected)"
                     preview_status.setText(
-                        f"Levels {request_levels} · Smooth {int(request_smooth)} · "
+                        f"Levels {request_levels} · {smooth_text} · "
                         f"Invert {'on' if request_invert else 'off'}"
                     )
 
@@ -161,6 +171,7 @@ class ImageMaskImportLayer:
                     description="2D mask preview",
                     coalesce_pending=True,
                 )
+
             def schedule_preview() -> None:
                 preview_timer.start(120)
 

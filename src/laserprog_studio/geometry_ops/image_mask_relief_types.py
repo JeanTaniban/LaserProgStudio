@@ -7,6 +7,14 @@ from laserprog_studio.domain.work_model import WorkMesh
 
 
 @dataclass(frozen=True, slots=True)
+class MaskPhysicalSize:
+    """Mechanical size of the raster footprint, independent of sample count."""
+
+    width_mm: float
+    height_mm: float
+
+
+@dataclass(frozen=True, slots=True)
 class MaskReliefStats:
     source_width: int
     source_height: int

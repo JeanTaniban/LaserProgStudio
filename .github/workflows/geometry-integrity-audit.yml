@@ -45,6 +45,10 @@ jobs:
         if: always()
         run: python scripts/audit_geometry_mutation_bypasses.py > geometry-mutation-bypasses.txt
 
+      - name: Measure project save lifecycle retention
+        if: always()
+        run: python scripts/project_save_lifecycle_probe.py > project-save-lifecycle.json
+
       - name: Upload audit evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +58,7 @@ jobs:
             geometry-integrity-probe.json
             targeted-geometry-tests.xml
             geometry-mutation-bypasses.txt
+            project-save-lifecycle.json
 
       - name: Run full project quality gate
         if: github.event_name == 'workflow_dispatch' && matrix.os == 'ubuntu-latest'

@@ -206,12 +206,24 @@ def _subpixel_footprint(
             }
 
             if case in (5, 10):
-                center = sum(vals) / 4.0
-                # Resolve saddle cells deterministically from the scalar center.
+                # True asymptotic decider for a bilinearly interpolated cell.
+                # Subtracting the isovalue first gives the saddle determinant
+                # Q = f(TL)*f(BR) - f(TR)*f(BL).  Unlike the arithmetic center,
+                # this preserves the topology of the bilinear field when corner
+                # magnitudes are strongly unbalanced.
+                a = vals[0] - threshold
+                b = vals[1] - threshold
+                c = vals[2] - threshold
+                d = vals[3] - threshold
+                q = a * c - b * d
                 if case == 5:
-                    pairs = ((0, 3), (1, 2)) if center > threshold else ((0, 1), (3, 2))
+                    # Positive corners are TR/BL. q < 0 connects them through
+                    # the saddle; equality intentionally keeps point contacts
+                    # disconnected.
+                    pairs = ((0, 3), (1, 2)) if q < 0.0 else ((0, 1), (3, 2))
                 else:
-                    pairs = ((0, 1), (3, 2)) if center > threshold else ((0, 3), (1, 2))
+                    # Positive corners are TL/BR. q > 0 connects them.
+                    pairs = ((0, 1), (3, 2)) if q > 0.0 else ((0, 3), (1, 2))
             else:
                 pairs = standard_cases.get(case, ())
 
@@ -228,15 +240,26 @@ def _subpixel_footprint(
     if not faces:
         raise ValueError("The binary mask contour could not be polygonized.")
 
+    def sample_activity_at_world(x: float, y: float) -> float:
+        """Bilinearly evaluate the same scalar field used for contouring."""
+
+        pc = (float(x) - x_min) / max(step_x, 1.0e-12) + 0.5
+        pr = (y_max - float(y)) / max(step_y, 1.0e-12) + 0.5
+        pc = max(0.0, min(float(cols + 1), pc))
+        pr = max(0.0, min(float(rows + 1), pr))
+        c0 = min(max(int(math.floor(pc)), 0), cols + 1)
+        r0 = min(max(int(math.floor(pr)), 0), rows + 1)
+        c1 = min(c0 + 1, cols + 1)
+        r1 = min(r0 + 1, rows + 1)
+        tx = max(0.0, min(1.0, pc - float(c0)))
+        ty = max(0.0, min(1.0, pr - float(r0)))
+        top = float(padded[r0, c0]) * (1.0 - tx) + float(padded[r0, c1]) * tx
+        bottom = float(padded[r1, c0]) * (1.0 - tx) + float(padded[r1, c1]) * tx
+        return top * (1.0 - ty) + bottom * ty
+
     def is_material_face(face: Any) -> bool:
         probe = face.representative_point()
-        x = float(probe.x)
-        y = float(probe.y)
-        c = int(round((x - x_min) / max(step_x, 1.0e-12) - 0.5))
-        r = int(round((y_max - y) / max(step_y, 1.0e-12) - 0.5))
-        if r < 0 or r >= rows or c < 0 or c >= cols:
-            return False
-        return float(values[r, c]) >= threshold
+        return sample_activity_at_world(float(probe.x), float(probe.y)) >= threshold
 
     selected = [face for face in faces if not face.is_empty and is_material_face(face)]
     if not selected:

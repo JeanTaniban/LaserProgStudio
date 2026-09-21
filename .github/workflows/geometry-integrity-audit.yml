@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - leane/geometry-integrity-foundation-cdc
+      - leane/fix-mask-2d-subpixel
   workflow_dispatch:
 
 jobs:

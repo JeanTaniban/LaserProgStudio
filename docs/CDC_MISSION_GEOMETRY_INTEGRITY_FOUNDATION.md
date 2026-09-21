@@ -1905,3 +1905,330 @@ Ils dépendent uniquement du contrat public `tool_api.geometry`.
 Le socle ne connaît aucun outil particulier.
 
 Cette séparation permet d’ajouter, modifier ou supprimer un outil sans modifier les autres et sans dupliquer les règles d’intégrité.
+
+---
+
+## 30. Cycle de vie de sauvegarde et compaction du projet
+
+La robustesse géométrique doit aussi s’appliquer à la persistance. Un objet supprimé de la scène courante ne doit pas continuer à coûter du temps ou de l’espace **sans raison explicite**.
+
+### 30.1 Diagnostic du format actuel
+
+Le format `.lpsproj` actuel est une archive ZIP reconstruite en mode `"w"` à chaque sauvegarde.
+
+Conséquence importante :
+
+- le writer **n’ajoute pas** de nouveaux fichiers à l’ancienne archive ;
+- un fichier supprimé de toutes les structures persistantes n’est pas physiquement conservé par accident dans le nouveau ZIP ;
+- la lenteur résiduelle vient donc de données qui sont encore **référencées** ou copiées pendant la sauvegarde, pas d’anciens membres ZIP orphelins laissés par append.
+
+Deux mécanismes sont actuellement particulièrement coûteux.
+
+#### Historique sémantique persistant
+
+`SceneDocument.record_modification(..., capture_snapshot=True)` stocke un snapshot complet de la scène.
+
+Le writer sérialise ensuite pour chaque scène :
+
+```text
+current meshes
++
+scene.snapshots[snapshot_1] -> tous les meshes
++
+scene.snapshots[snapshot_2] -> tous les meshes
++
+...
+```
+
+Le `history_limit` vaut actuellement 50 entrées par scène.
+
+Ainsi, supprimer un objet de la scène courante ne supprime pas nécessairement sa géométrie du fichier : un ancien restore point peut encore la référencer volontairement.
+
+Ce n’est pas un blob ZIP orphelin ; c’est une **rétention cachée par l’historique restaurable**.
+
+#### Undo/redo RAM et autosave
+
+Le Ctrl+Z technique de `ModelStore` reste en RAM et n’est pas directement sérialisé dans le `.lpsproj`.
+
+Mais l’autosave fait actuellement :
+
+```python
+project_snapshot = copy.deepcopy(project)
+save_project_atomic(project_snapshot, ...)
+```
+
+Le deepcopy copie donc aussi les états techniques `_history` / `_redo_history`, même si le writer ne les écrit jamais ensuite.
+
+Une scène qui a contenu beaucoup de géométrie puis a été vidée peut donc produire :
+
+- un fichier recovery relativement petit ;
+- mais une phase `deepcopy(project)` toujours très coûteuse.
+
+### 30.2 Troisième coût : double compression du save manuel
+
+Le save manuel écrit actuellement chaque mesh avec :
+
+```text
+np.savez_compressed(...)
+→ bytes NPZ déjà DEFLATE
+→ ZipFile(..., ZIP_DEFLATED)
+→ writestr(npz_bytes)
+```
+
+Le payload NPZ déjà compressé est donc repassé dans DEFLATE au niveau du `.lpsproj`.
+
+Cette double compression ajoute du CPU pour un gain de taille généralement faible.
+
+Le format cible doit compresser une seule fois :
+
+- soit `.npz` compressé + membre ZIP externe `ZIP_STORED` ;
+- soit arrays non compressés + compression au niveau archive.
+
+Le choix final doit être benchmarké sur Windows, environnement de release.
+
+### 30.3 Trois historiques distincts
+
+Le projet doit distinguer explicitement :
+
+#### UndoHistory — transient
+
+- Ctrl+Z / Ctrl+Y ;
+- RAM uniquement ;
+- durée de vie session ;
+- jamais sérialisé ;
+- jamais copié dans un recovery snapshot.
+
+#### RestoreHistory — persistent et borné
+
+- opérations sémantiques significatives ;
+- restaurable après fermeture/réouverture ;
+- persistant dans le save manuel ;
+- borné par politique de rétention ;
+- dédupliqué par contenu.
+
+#### PinnedCheckpoint — persistant explicite
+
+- checkpoint que l’utilisateur veut conserver ;
+- n’est pas supprimé par la politique automatique ;
+- doit afficher son coût de stockage si significatif.
+
+Un autosave de récupération n’a pas besoin de conserver l’historique restaurable complet.
+
+### 30.4 Modes de persistance
+
+Créer une couche dédiée :
+
+```text
+ProjectPersistenceService
+    build_snapshot(project, mode)
+    save(snapshot, path)
+    load(path)
+    analyze_storage(project_or_file)
+    compact(...)
+```
+
+avec au minimum :
+
+#### FULL_SAVE
+
+Contient :
+
+- scènes courantes ;
+- metadata persistante ;
+- RestoreHistory retenu ;
+- PinnedCheckpoints ;
+- contrats/certificats persistants valides.
+
+N’inclut jamais :
+
+- undo/redo technique ;
+- preview ;
+- caches de rendu ;
+- helpers temporaires ;
+- visual proxies reconstruisibles ;
+- buffers clipboard ;
+- état de drag.
+
+#### RECOVERY_SAVE
+
+Contient seulement ce qui est requis pour récupérer le travail courant :
+
+- scènes courantes commitées ;
+- metadata nécessaire ;
+- références de fichiers/projet nécessaires ;
+- éventuellement le minimum d’état applicatif validé pour reprendre le document.
+
+N’inclut pas :
+
+- RestoreHistory complet ;
+- UndoHistory ;
+- anciennes versions des meshes ;
+- artefacts dérivés reconstruisibles.
+
+Cela doit rendre l’autosave proportionnel à **l’état courant**, et non à tout ce que le projet a contenu pendant la session.
+
+### 30.5 Snapshot de persistance dédié
+
+L’autosave ne doit plus appeler `copy.deepcopy(project)`.
+
+Créer un type explicite, UI-neutral :
+
+```python
+ProjectPersistenceSnapshot(
+    project_id=...,
+    active_scene_id=...,
+    scenes=(...),
+    restore_history=(...),  # FULL_SAVE seulement
+    pinned_checkpoints=(...),
+)
+```
+
+Le builder copie uniquement les données autorisées par le mode.
+
+À court terme, ce snapshot peut encore copier les vertices/triangles nécessaires.
+
+À moyen terme, l’architecture `GeometryMutationGateway` permettra aux géométries certifiées d’être représentées par des payloads immuables/révisionnés, ce qui rendra la capture d’un snapshot de sauvegarde beaucoup moins coûteuse et évitera de lire un mesh pendant qu’un contrôleur le modifie.
+
+### 30.6 Stockage content-addressed des géométries
+
+Le format projet cible ne doit plus écrire une copie NPZ complète du même mesh dans chaque restore point.
+
+Créer un blob store interne :
+
+```text
+geometry/
+  <geometry_hash_1>.npz
+  <geometry_hash_2>.npz
+```
+
+Les scènes et snapshots stockent des références :
+
+```json
+{
+  "mesh_id": "...",
+  "geometry_hash": "sha256:...",
+  "name": "...",
+  "material": {}
+}
+```
+
+Deux snapshots contenant le même mesh réutilisent donc le même blob.
+
+Le hash de stockage doit être défini indépendamment du `mesh_id` et inclure au minimum les données géométriques persistantes qui déterminent le payload binaire.
+
+Les metadata d’instance restent séparées afin qu’un changement de nom/couleur ne force pas la duplication des vertices/triangles.
+
+### 30.7 Garbage collection mark-and-sweep
+
+Avant l’écriture d’un FULL_SAVE :
+
+1. construire les manifests des scènes courantes ;
+2. appliquer la politique de rétention de RestoreHistory ;
+3. collecter les références des PinnedCheckpoints ;
+4. construire l’ensemble des `geometry_hash` accessibles ;
+5. écrire **uniquement** ces blobs.
+
+Un blob qui n’est référencé ni par l’état courant, ni par un restore point conservé, ni par un checkpoint épinglé disparaît du nouveau fichier.
+
+La règle devient :
+
+> supprimé de la scène courante + absent de l’historique retenu = absent du fichier sauvegardé.
+
+Si un objet supprimé est encore conservé uniquement parce qu’un restore point le référence, ce coût doit être explicable par le diagnostic de stockage.
+
+### 30.8 Politique de rétention basée sur le coût
+
+Une limite de 50 snapshots n’est pas suffisante : 50 snapshots de petits objets et 50 snapshots d’assemblages lourds n’ont rien à voir.
+
+`RestoreHistoryPolicy` doit combiner :
+
+- nombre maximum d’entrées ;
+- budget de stockage estimé ;
+- checkpoints épinglés non supprimables automatiquement ;
+- conservation préférentielle des entrées récentes.
+
+La valeur du budget par défaut doit être choisie après benchmark sur des projets réels, pas codée arbitrairement dans le socle.
+
+Le prune doit fonctionner sur les **références** ; le blob réellement libéré est déterminé par le mark-and-sweep.
+
+### 30.9 Diagnostic utilisateur et instrumentation
+
+Ajouter un rapport de sauvegarde structuré :
+
+```python
+ProjectStorageReport(
+    current_scene_bytes=...,
+    restore_history_bytes=...,
+    pinned_checkpoint_bytes=...,
+    unique_geometry_bytes=...,
+    deduplicated_reference_bytes=...,
+    transient_undo_bytes_estimate=...,
+    unique_blob_count=...,
+    referenced_blob_count=...,
+)
+```
+
+La télémétrie locale de performance doit séparer :
+
+- capture du persistence snapshot ;
+- encodage arrays ;
+- compression ;
+- écriture archive ;
+- fsync/replace atomique ;
+- taille finale ;
+- nombre de meshes courants ;
+- nombre de restore points ;
+- nombre de blobs uniques ;
+- ratio de déduplication.
+
+Une sauvegarde lente doit donc être attribuable à une phase précise.
+
+### 30.10 Compact Project
+
+Prévoir une opération explicite de maintenance :
+
+`Compact project`
+
+Elle doit :
+
+- appliquer la politique de rétention ;
+- supprimer les restore points non épinglés que l’utilisateur autorise à perdre ;
+- garbage-collecter les blobs devenus inaccessibles ;
+- réécrire atomiquement le projet ;
+- afficher taille avant/après.
+
+Elle ne doit jamais modifier la scène courante.
+
+La sauvegarde normale effectue déjà le GC des blobs **inaccessibles**. Compact Project sert surtout à libérer les blobs encore accessibles uniquement via de vieux restore points.
+
+### 30.11 Tests obligatoires de persistance
+
+Ajouter au corpus :
+
+1. ajouter un gros mesh → supprimer → save sans historique : fichier revient à une taille proche du projet vide ;
+2. ajouter un gros mesh → snapshot sémantique → supprimer : le FULL_SAVE conserve la géométrie tant que le restore point la référence ;
+3. prune du restore point → save : le blob supprimé disparaît ;
+4. suppression complète d’une scène : aucun blob propre à cette scène ne reste accessible ;
+5. 20 snapshots sans changement de géométrie : un seul blob géométrique ;
+6. changement d’un seul mesh parmi N : seuls les blobs réellement nouveaux sont ajoutés ;
+7. RECOVERY_SAVE d’un projet avec un gros undo stack : taille et temps indépendants de cet undo stack ;
+8. FULL_SAVE puis save sans changement : aucune recompression géométrique inutile si le cache/reuse de blobs est disponible ;
+9. corruption volontaire d’un blob : erreur de chargement explicite/hash mismatch ;
+10. Linux/Windows : même graphe de références et mêmes invariants de taille logique.
+
+### 30.12 Critères d’acceptation persistence
+
+La mission persistence est validée si :
+
+- un mesh supprimé et non référencé par un historique/checkpoint n’est plus présent dans le fichier suivant ;
+- un objet conservé pour RestoreHistory est identifiable comme tel ;
+- l’autosave n’effectue plus de `deepcopy(project)` incluant undo/redo ;
+- RECOVERY_SAVE n’embarque pas l’historique restaurable complet ;
+- les snapshots ne dupliquent plus N fois les mêmes payloads géométriques ;
+- le save manuel ne double-compresse plus les NPZ ;
+- la suppression d’une scène élimine toutes ses données non partagées au prochain save ;
+- le temps d’autosave dépend principalement de l’état courant ;
+- la croissance du fichier est explicable par `ProjectStorageReport` ;
+- save/load conserve exactement l’état courant et les restore points retenus ;
+- toutes les écritures restent atomiques.
+

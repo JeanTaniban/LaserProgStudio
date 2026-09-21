@@ -60,13 +60,33 @@ class BackgroundTaskManager:
         on_error: ErrorCallback | None = None,
         on_finished: FinallyCallback | None = None,
         description: str = "Background task",
+        coalesce_pending: bool = False,
     ) -> int:
         """Submit *worker* and return its freshness token.
 
         Submitting a new task with the same key marks older callbacks stale.
         Already-running work is allowed to finish, but its result is ignored.
+        With coalescing enabled, stale tasks that have not started yet are
+        cancelled so an interactive preview queue cannot grow without bound.
         """
         key = str(key)
+        if bool(coalesce_pending):
+            for record_key, record in list(self._records.items()):
+                if record.key != key:
+                    continue
+                if not record.future.cancel():
+                    continue
+                try:
+                    if record.timer is not None:
+                        record.timer.stop()
+                        record.timer.deleteLater()
+                except Exception:
+                    pass
+                self._records.pop(record_key, None)
+                if _APP_AUDIT is not None:
+                    _APP_AUDIT.increment(f"background.coalesced.{key}")
+                    _APP_AUDIT.increment("background.coalesced.total")
+
         token = int(next(self._counter))
         self._latest_token_by_key[key] = token
         if _APP_AUDIT is not None:

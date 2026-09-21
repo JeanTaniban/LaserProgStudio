@@ -105,6 +105,45 @@ def _point_key(point: tuple[float, float]) -> tuple[float, float]:
     return (round(float(point[0]), 12), round(float(point[1]), 12))
 
 
+def _ambiguous_case_pairs(
+    case: int,
+    values: tuple[float, float, float, float],
+    threshold: float,
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Resolve marching-squares saddle cases with the asymptotic decider."""
+
+    if int(case) not in (5, 10):
+        raise ValueError("Asymptotic decider is only defined for cases 5 and 10.")
+    a = float(values[0]) - float(threshold)
+    b = float(values[1]) - float(threshold)
+    c = float(values[2]) - float(threshold)
+    d = float(values[3]) - float(threshold)
+    q = a * c - b * d
+    if int(case) == 5:
+        return ((0, 3), (1, 2)) if q < 0.0 else ((0, 1), (3, 2))
+    return ((0, 1), (3, 2)) if q > 0.0 else ((0, 3), (1, 2))
+
+
+def _bilinear_sample(array: np.ndarray, row: float, col: float) -> float:
+    """Sample a 2D scalar array continuously in array-index coordinates."""
+
+    data = np.asarray(array, dtype=np.float64)
+    if data.ndim != 2 or data.size <= 0:
+        raise ValueError("Bilinear sampling requires a non-empty 2D array.")
+    rows, cols = int(data.shape[0]), int(data.shape[1])
+    rr = max(0.0, min(float(rows - 1), float(row)))
+    cc = max(0.0, min(float(cols - 1), float(col)))
+    r0 = min(max(int(math.floor(rr)), 0), rows - 1)
+    c0 = min(max(int(math.floor(cc)), 0), cols - 1)
+    r1 = min(r0 + 1, rows - 1)
+    c1 = min(c0 + 1, cols - 1)
+    ty = max(0.0, min(1.0, rr - float(r0)))
+    tx = max(0.0, min(1.0, cc - float(c0)))
+    top = float(data[r0, c0]) * (1.0 - tx) + float(data[r0, c1]) * tx
+    bottom = float(data[r1, c0]) * (1.0 - tx) + float(data[r1, c1]) * tx
+    return top * (1.0 - ty) + bottom * ty
+
+
 def _subpixel_footprint(
     activity: np.ndarray,
     *,
@@ -206,24 +245,7 @@ def _subpixel_footprint(
             }
 
             if case in (5, 10):
-                # True asymptotic decider for a bilinearly interpolated cell.
-                # Subtracting the isovalue first gives the saddle determinant
-                # Q = f(TL)*f(BR) - f(TR)*f(BL).  Unlike the arithmetic center,
-                # this preserves the topology of the bilinear field when corner
-                # magnitudes are strongly unbalanced.
-                a = vals[0] - threshold
-                b = vals[1] - threshold
-                c = vals[2] - threshold
-                d = vals[3] - threshold
-                q = a * c - b * d
-                if case == 5:
-                    # Positive corners are TR/BL. q < 0 connects them through
-                    # the saddle; equality intentionally keeps point contacts
-                    # disconnected.
-                    pairs = ((0, 3), (1, 2)) if q < 0.0 else ((0, 1), (3, 2))
-                else:
-                    # Positive corners are TL/BR. q > 0 connects them.
-                    pairs = ((0, 1), (3, 2)) if q > 0.0 else ((0, 3), (1, 2))
+                pairs = _ambiguous_case_pairs(case, vals, threshold)
             else:
                 pairs = standard_cases.get(case, ())
 
@@ -245,17 +267,7 @@ def _subpixel_footprint(
 
         pc = (float(x) - x_min) / max(step_x, 1.0e-12) + 0.5
         pr = (y_max - float(y)) / max(step_y, 1.0e-12) + 0.5
-        pc = max(0.0, min(float(cols + 1), pc))
-        pr = max(0.0, min(float(rows + 1), pr))
-        c0 = min(max(int(math.floor(pc)), 0), cols + 1)
-        r0 = min(max(int(math.floor(pr)), 0), rows + 1)
-        c1 = min(c0 + 1, cols + 1)
-        r1 = min(r0 + 1, rows + 1)
-        tx = max(0.0, min(1.0, pc - float(c0)))
-        ty = max(0.0, min(1.0, pr - float(r0)))
-        top = float(padded[r0, c0]) * (1.0 - tx) + float(padded[r0, c1]) * tx
-        bottom = float(padded[r1, c0]) * (1.0 - tx) + float(padded[r1, c1]) * tx
-        return top * (1.0 - ty) + bottom * ty
+        return _bilinear_sample(padded, pr, pc)
 
     def is_material_face(face: Any) -> bool:
         probe = face.representative_point()
@@ -411,4 +423,9 @@ def build_binary_mask_footprint(
     )
 
 
-__all__ = ["BinaryMaskFootprint", "build_binary_mask_footprint"]
+__all__ = [
+    "BinaryMaskFootprint",
+    "build_binary_mask_footprint",
+    "_ambiguous_case_pairs",
+    "_bilinear_sample",
+]

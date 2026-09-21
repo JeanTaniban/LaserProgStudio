@@ -366,9 +366,22 @@ Un candidat est refusé si l’un de ces invariants est cassé :
 - nombre de composantes identique ;
 - nombre de trous identique ;
 - signature composantes/trous identique ;
+- **correspondance spatiale** des composantes conservée ;
+- **correspondance spatiale** des cavités conservée ;
 - aire dans le budget ;
 - symmetric difference dans le budget ;
 - Hausdorff distance dans le budget.
+
+La correspondance spatiale empêche un faux positif du type :
+
+```text
+1 trou avant
+1 trou après
+```
+
+alors que le trou d’origine a disparu et qu’un nouveau trou est apparu ailleurs.
+
+Chaque composante et chaque trou utilisent des representative points croisés entre référence et candidat.
 
 ### 9.3 Backoff
 
@@ -871,7 +884,10 @@ Le diagnostic détaillé peut rester dans les logs.
 - tests Manifold direct ;
 - tests Boolean chaînés ;
 - probe qualité Linux/Windows ;
-- benchmark 256/512/1024.
+- benchmark 256/512/1024 ;
+- cache activité / contour brut / footprint lissé ;
+- `MaskSmoothingReport` demandé/accepté ;
+- conservation spatiale des cavités pendant Smooth.
 
 ### À faire avant merge
 

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - leane/geometry-integrity-foundation-cdc
+      - leane/fix-mask-2d-subpixel
     paths:
       - 'scripts/mask_2d_quality_probe.py'
       - 'src/laserprog_studio/geometry_ops/image_mask_relief*.py'

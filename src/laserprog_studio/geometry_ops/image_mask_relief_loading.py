@@ -185,19 +185,22 @@ def _load_binary_mask(
 
     if levels is None:
         threshold_norm = _clamp_float(float(binary_threshold or 0.5), 0.0, 1.0)
-        threshold_byte = int(math.ceil(threshold_norm * 255.0))
+        # Explicit thresholds are continuous normalized values. Integer samples
+        # are therefore classified identically to the historical ceil() rule.
+        threshold_level = float(threshold_norm) * 255.0
     else:
         level = _clamp_float(float(levels), 0.0, 100.0)
         automatic = _otsu_threshold(hist)
         # Higher Levels should keep more material, lower Levels should be
-        # stricter.  Keep a small floor so nearly-white JPEG noise stays empty.
-        threshold_byte = int(round(float(automatic) + (50.0 - level) * 1.9))
-        threshold_byte = max(8, min(247, threshold_byte))
-        threshold_norm = float(threshold_byte) / 255.0
-    threshold_byte = max(0, min(255, int(threshold_byte)))
+        # stricter. Otsu returns the last histogram bin in the background
+        # class, so the continuous iso-level lies halfway to the next bin.
+        threshold_index = int(round(float(automatic) + (50.0 - level) * 1.9))
+        threshold_index = max(8, min(247, threshold_index))
+        threshold_level = float(threshold_index) + 0.5
+        threshold_norm = float(threshold_level) / 255.0
 
     rows: list[list[bool]] = []
     for row in range(height):
         base = row * width
-        rows.append([int(activity[base + col]) >= threshold_byte for col in range(width)])
+        rows.append([float(activity[base + col]) >= threshold_level for col in range(width)])
     return rows, source_size, bool(downsampled), float(threshold_norm)

@@ -262,6 +262,45 @@ class ImageMaskReliefBinaryImportTest(unittest.TestCase):
             self.assertLess(abs((maxx - minx) - 512.0), 0.05)
             self.assertLess(abs((maxy - miny) - 256.0), 0.05)
 
+    def test_smoothing_report_is_persisted_and_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "smooth_report.png"
+            img = Image.new("L", (120, 120), 255)
+            draw = ImageDraw.Draw(img)
+            draw.rounded_rectangle((12, 12, 108, 108), radius=26, fill=0)
+            draw.ellipse((44, 44, 76, 76), fill=255)
+            img.save(path)
+
+            footprint = build_binary_mask_footprint(
+                path,
+                pixel_size_mm=1.0,
+                levels=50,
+                smooth=73,
+                max_grid_size=0,
+            )
+            report = footprint.smoothing_report
+
+            self.assertAlmostEqual(report.requested_level, 73.0, places=6)
+            self.assertGreaterEqual(report.accepted_level, 0.0)
+            self.assertLessEqual(report.accepted_level, report.requested_level)
+            self.assertEqual(report.source_components, report.result_components)
+            self.assertEqual(report.source_holes, report.result_holes)
+            self.assertEqual(report.fallback_used, report.accepted_level + 1.0e-9 < report.requested_level)
+
+            result = build_mask_relief_mesh(
+                path,
+                max_height_mm=6.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=73,
+                max_grid_size=0,
+            )
+            metadata = result.mesh.metadata or {}
+            self.assertAlmostEqual(float(metadata["mask_smooth_requested"]), report.requested_level, places=6)
+            self.assertAlmostEqual(float(metadata["mask_smooth_accepted"]), report.accepted_level, places=6)
+            self.assertEqual(bool(metadata["mask_smooth_fallback"]), bool(report.fallback_used))
+
     def test_smart_import_treats_transparent_background_as_empty_white(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "transparent_mask.png"

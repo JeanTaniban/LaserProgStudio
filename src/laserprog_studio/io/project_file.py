@@ -268,7 +268,10 @@ def _save_project_atomic_measured(project: ProjectStore, path: str | Path, *, ma
     os.close(fd)
     tmp_path = Path(tmp_name)
     try:
-        save_project(project, tmp_path, mark_clean=mark_clean, autosave_fast=autosave_fast)
+        # Keep project state transactional too: writing the temporary archive
+        # must never mark the in-memory document clean or repoint it to the
+        # temporary file before the final atomic replace has succeeded.
+        save_project(project, tmp_path, mark_clean=False, autosave_fast=autosave_fast)
         os.replace(tmp_path, out_path)
     finally:
         if tmp_path.exists():

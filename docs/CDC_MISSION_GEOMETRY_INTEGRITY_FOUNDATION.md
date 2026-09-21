@@ -2392,9 +2392,38 @@ Raisons :
 - un blob inchangé peut être recopié byte-for-byte depuis l’ancienne archive vers la nouvelle sans réencoder les arrays ;
 - le hash porte sur le payload logique/canonique, avec vérification du contenu à l’écriture/lecture.
 
+### 30.13.2 Échec transactionnel reproduit
+
+Le probe injecte volontairement un échec dans `os.replace(tmp_path, target_path)`.
+
+Résultat actuel :
+
+- exception : `OSError: synthetic replace failure` ;
+- fichier cible final : absent ;
+- `project.dirty` après l’échec : **False** ;
+- `project.project_path` après l’échec : chemin du **fichier temporaire** ;
+- ce fichier temporaire est ensuite supprimé par le `finally`.
+
+Le projet en mémoire affirme donc être sauvegardé vers un fichier qui n’existe plus.
+
+Correction obligatoire :
+
+- le serializer temporaire est toujours appelé avec un mode sans effet de bord ;
+- `project_path` et `dirty` ne changent qu’après le succès du replace final ;
+- l’état pré-save est restauré automatiquement sur toute exception.
+
+Ce bug est classé **P0-Persistence Safety**.
+
 ### 30.14 Priorités persistence
 
-#### P0-Persistence — corriger le coût caché
+#### P0-Persistence Safety — garantir le commit
+
+1. rendre le serializer bas niveau sans effet de bord ;
+2. marquer le projet clean uniquement après `os.replace()` réussi ;
+3. ajouter un test injectant un replace en échec ;
+4. garantir la restauration exacte de `dirty` et `project_path` sur erreur.
+
+#### P0-Persistence Performance — corriger le coût caché
 
 1. remplacer `copy.deepcopy(project)` de l’autosave par `ProjectPersistenceSnapshot(mode=RECOVERY_SAVE)` ;
 2. exclure explicitement undo/redo, restore history, previews et caches du recovery ;

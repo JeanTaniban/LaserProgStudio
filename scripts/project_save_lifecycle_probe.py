@@ -14,6 +14,8 @@ from __future__ import annotations
 import copy
 import io
 import json
+import hashlib
+import sqlite3
 from pathlib import Path
 import tempfile
 import time
@@ -216,6 +218,125 @@ def _atomic_failure_probe(root: Path) -> dict[str, object]:
     }
 
 
+def _incremental_container_probe(root: Path) -> dict[str, object]:
+    # Compare a portable full ZIP rewrite with a transactional incremental SQLite
+    # project container using the same pre-compressed immutable geometry blobs.
+    blobs: list[tuple[str, bytes]] = []
+    for i in range(12):
+        mesh = _heavy_mesh(
+            f"container_{i}",
+            seed=2000 + i,
+            vertex_count=14000,
+            triangle_count=28000,
+        )
+        buffer = io.BytesIO()
+        np.savez_compressed(
+            buffer,
+            vertices=np.asarray(mesh.vertices, dtype=np.float64),
+            triangles=np.asarray(mesh.triangles, dtype=np.int64),
+        )
+        payload = buffer.getvalue()
+        digest = hashlib.sha256(payload).hexdigest()
+        blobs.append((digest, payload))
+
+    manifest = json.dumps({"geometry": [digest for digest, _ in blobs]}).encode("utf-8")
+
+    def write_zip(path: Path, current_blobs: list[tuple[str, bytes]], manifest_bytes: bytes) -> tuple[float, int]:
+        started = time.perf_counter()
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as zf:
+            zf.writestr("manifest.json", manifest_bytes)
+            for digest, payload in current_blobs:
+                zf.writestr(f"geometry/{digest}.npz", payload)
+        elapsed = (time.perf_counter() - started) * 1000.0
+        return float(elapsed), int(path.stat().st_size)
+
+    zip_path = root / "incremental_compare.lpsproj"
+    zip_initial_ms, zip_initial_bytes = write_zip(zip_path, blobs, manifest)
+    zip_repeat_ms, _ = write_zip(zip_path, blobs, manifest)
+
+    # Create one genuinely changed blob.
+    changed_mesh = _heavy_mesh("container_changed", seed=9999, vertex_count=14000, triangle_count=28000)
+    changed_buffer = io.BytesIO()
+    np.savez_compressed(
+        changed_buffer,
+        vertices=np.asarray(changed_mesh.vertices, dtype=np.float64),
+        triangles=np.asarray(changed_mesh.triangles, dtype=np.int64),
+    )
+    changed_payload = changed_buffer.getvalue()
+    changed_digest = hashlib.sha256(changed_payload).hexdigest()
+    changed_blobs = list(blobs)
+    old_digest, _old_payload = changed_blobs[-1]
+    changed_blobs[-1] = (changed_digest, changed_payload)
+    changed_manifest = json.dumps({"geometry": [digest for digest, _ in changed_blobs]}).encode("utf-8")
+    zip_one_changed_ms, zip_changed_bytes = write_zip(zip_path, changed_blobs, changed_manifest)
+
+    db_path = root / "incremental_compare.sqlite"
+    con = sqlite3.connect(db_path)
+    try:
+        journal_mode = con.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        con.execute("PRAGMA synchronous=FULL")
+        con.execute("CREATE TABLE geometry_blobs (hash TEXT PRIMARY KEY, payload BLOB NOT NULL)")
+        con.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL)")
+
+        started = time.perf_counter()
+        with con:
+            con.executemany(
+                "INSERT INTO geometry_blobs(hash, payload) VALUES(?, ?)",
+                [(digest, sqlite3.Binary(payload)) for digest, payload in blobs],
+            )
+            con.execute("INSERT INTO kv(key, value) VALUES('manifest', ?)", (sqlite3.Binary(manifest),))
+        sqlite_initial_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute("UPDATE kv SET value=? WHERE key='manifest'", (sqlite3.Binary(manifest),))
+        sqlite_manifest_only_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute(
+                "INSERT OR IGNORE INTO geometry_blobs(hash, payload) VALUES(?, ?)",
+                (changed_digest, sqlite3.Binary(changed_payload)),
+            )
+            con.execute(
+                "UPDATE kv SET value=? WHERE key='manifest'",
+                (sqlite3.Binary(changed_manifest),),
+            )
+        sqlite_one_changed_ms = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        with con:
+            con.execute("DELETE FROM geometry_blobs WHERE hash=?", (old_digest,))
+        sqlite_gc_ms = (time.perf_counter() - started) * 1000.0
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        sqlite_bytes = int(db_path.stat().st_size)
+        wal_path = Path(str(db_path) + "-wal")
+        wal_bytes = int(wal_path.stat().st_size) if wal_path.exists() else 0
+    finally:
+        con.close()
+
+    return {
+        "blob_count": len(blobs),
+        "logical_blob_bytes": int(sum(len(payload) for _digest, payload in blobs)),
+        "zip_full_rewrite": {
+            "initial_ms": zip_initial_ms,
+            "repeat_no_change_ms": zip_repeat_ms,
+            "one_changed_ms": zip_one_changed_ms,
+            "archive_bytes": zip_changed_bytes,
+            "initial_bytes": zip_initial_bytes,
+        },
+        "sqlite_wal": {
+            "journal_mode": str(journal_mode),
+            "initial_ms": float(sqlite_initial_ms),
+            "manifest_only_ms": float(sqlite_manifest_only_ms),
+            "one_changed_blob_ms": float(sqlite_one_changed_ms),
+            "gc_delete_ms": float(sqlite_gc_ms),
+            "db_bytes_after_checkpoint": sqlite_bytes,
+            "wal_bytes_after_checkpoint": wal_bytes,
+        },
+    }
+
+
 def _snapshot_scaling_probe(root: Path) -> dict[str, object]:
     # One moderately heavy mesh, duplicated by semantic history exactly as the
     # current SceneDocument implementation does. The current scene remains the
@@ -352,6 +473,7 @@ def main() -> int:
             "undo_only": _scenario_undo_only(root),
             "compression_strategies": _compression_strategy_probe(root),
             "snapshot_scaling": _snapshot_scaling_probe(root),
+            "incremental_container": _incremental_container_probe(root),
             "atomic_failure": _atomic_failure_probe(root),
         }
 

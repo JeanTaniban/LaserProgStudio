@@ -1,201 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from pathlib import Path
 import math
+from pathlib import Path
 
-from laserprog_studio.domain.work_model import WorkMesh
-
-from .image_mask_relief_loading import _clamp_float, _load_binary_mask
 from .image_mask_relief_types import MaskReliefResult, MaskReliefStats
-
-_Q_SCALE = 1_000_000.0
-
-
-def _binary_mask_to_smoothed_geometry(mask: list[list[bool]], *, pixel_size_mm: float, smooth: float):
-    """Convert a binary mask grid to the same smoothed footprint used by the mesh."""
-
-    from shapely.geometry import box
-    from shapely.ops import unary_union
-
-    rows = len(mask)
-    cols = len(mask[0]) if rows else 0
-    if rows <= 0 or cols <= 0:
-        return None, 0
-
-    pixel = max(1e-6, float(pixel_size_mm))
-    rects = []
-    active_pixels = 0
-    for r in range(rows):
-        c = 0
-        while c < cols:
-            if not bool(mask[r][c]):
-                c += 1
-                continue
-            start = c
-            while c < cols and bool(mask[r][c]):
-                c += 1
-            end = c
-            active_pixels += end - start
-            rects.append(box(float(start) * pixel, float(r) * pixel, float(end) * pixel, float(r + 1) * pixel))
-
-    if not rects:
-        return None, 0
-    geom = unary_union(rects)
-    geom = _smooth_binary_geometry(geom, pixel_size_mm=pixel, smooth=float(smooth))
-    return geom, int(active_pixels)
-
-
-def _smooth_binary_geometry(geom, *, pixel_size_mm: float, smooth: float):
-    """Round and simplify a binary footprint without pre-threshold blur.
-
-    The mask is thresholded first, exactly from the source pixels, then only the
-    vector outline is simplified/rounded.  This preserves thin strokes and edge
-    information that a Gaussian blur would otherwise erase before binarization.
-    """
-
-    from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
-    from shapely.ops import unary_union
-
-    smooth_level = _clamp_float(float(smooth), 0.0, 100.0)
-    try:
-        geom = geom.buffer(0)
-    except Exception:
-        pass
-    if smooth_level <= 0.0 or getattr(geom, "is_empty", False):
-        return geom
-
-    pixel = max(1e-6, float(pixel_size_mm))
-    minx, miny, maxx, maxy = geom.bounds
-    span = max(0.0, min(float(maxx - minx), float(maxy - miny)))
-    if span <= 0.0:
-        return geom
-
-    # Stay below half a pixel so Smooth improves jagged contours without turning
-    # into a morphological filter.  The previous blur/opening pass could delete
-    # narrow borders; this one is intentionally contour-only and conservative.
-    # The simplification tolerance can exceed one raw pixel on broad shapes so
-    # ellipses and logos do not keep every stair-step vertex.  The span and area
-    # guards below reject destructive candidates, which protects very thin parts.
-    tolerance = min(pixel * 1.15, pixel * (0.08 + 1.55 * smooth_level / 100.0), span * 0.08)
-    radius = min(pixel * 0.38, pixel * (0.03 + 0.32 * smooth_level / 100.0), span * 0.05)
-    if tolerance <= 1e-9 and radius <= 1e-9:
-        return geom
-
-    def polygons_of(value):
-        if isinstance(value, Polygon):
-            return [value] if not value.is_empty else []
-        if isinstance(value, MultiPolygon):
-            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
-        if isinstance(value, GeometryCollection):
-            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
-        return [poly for poly in getattr(value, "geoms", []) if isinstance(poly, Polygon) and not poly.is_empty]
-
-    def valid_candidate(candidate, reference) -> bool:
-        try:
-            if getattr(candidate, "is_empty", True):
-                return False
-            ref_area = max(float(reference.area), 1e-9)
-            cand_area = float(candidate.area)
-            if cand_area < ref_area * 0.72:
-                return False
-            if cand_area > ref_area * 1.45 + pixel * pixel * 8.0:
-                return False
-            # Prevent the smoothing pass from collapsing tiny strokes into a
-            # different object.  The moved area may grow with smoothing, but not
-            # enough to dominate the original shape.
-            try:
-                changed_area = float(candidate.symmetric_difference(reference).area)
-                if changed_area > max(ref_area * 0.55, pixel * pixel * 12.0):
-                    return False
-            except Exception:
-                pass
-            return True
-        except Exception:
-            return False
-
-    smoothed_parts = []
-    for part in polygons_of(geom):
-        reference = part
-        candidate = reference
-        if tolerance > 1e-9:
-            simplified = candidate.simplify(float(tolerance), preserve_topology=True)
-            if valid_candidate(simplified, reference):
-                candidate = simplified
-        if radius > 1e-9:
-            # Closing rounds outward corners but does not perform the destructive
-            # erode/open pass that was removing fine details.  Each component is
-            # processed separately to avoid merging nearby independent islands.
-            rounded = candidate.buffer(float(radius), quad_segs=5, join_style=1).buffer(
-                -float(radius), quad_segs=5, join_style=1
-            )
-            if valid_candidate(rounded, reference):
-                candidate = rounded
-        try:
-            candidate = candidate.buffer(0)
-        except Exception:
-            pass
-        smoothed_parts.extend(polygons_of(candidate) or [reference])
-
-    if not smoothed_parts:
-        return geom
-    try:
-        merged = unary_union(smoothed_parts).buffer(0)
-        if valid_candidate(merged, geom):
-            return merged
-    except Exception:
-        pass
-    try:
-        return MultiPolygon(smoothed_parts).buffer(0)
-    except Exception:
-        return geom
-
-
-def _separate_polygon_point_contacts(geom, *, pixel_size_mm: float):
-    """Remove zero-area pinches that cannot form a manifold extrusion.
-
-    A raster can contain strokes that only meet at one pixel corner.  Shapely
-    may represent a smoothed version as one polygon whose exterior and an
-    interior ring touch at that point.  Extruding that representation produces
-    four side faces on the same vertical edge.  The shape looks correct, but it
-    is non-manifold and every boolean rightfully rejects it.  Apply an
-    imperceptibly small close/open only for that pathological topology.
-    """
-
-    from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
-
-    def polygons_of(value):
-        if isinstance(value, Polygon):
-            return [value] if not value.is_empty else []
-        if isinstance(value, MultiPolygon):
-            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
-        if isinstance(value, GeometryCollection):
-            return [poly for poly in value.geoms if isinstance(poly, Polygon) and not poly.is_empty]
-        return [poly for poly in getattr(value, "geoms", []) if isinstance(poly, Polygon) and not poly.is_empty]
-
-    def has_ring_point_contact(poly) -> bool:
-        seen: set[tuple[int, int]] = set()
-        for ring in (poly.exterior, *poly.interiors):
-            coords = list(ring.coords)
-            if len(coords) > 1:
-                coords = coords[:-1]
-            for x, y in coords:
-                key = (int(round(float(x) * _Q_SCALE)), int(round(float(y) * _Q_SCALE)))
-                if key in seen:
-                    return True
-                seen.add(key)
-        return False
-
-    if not any(has_ring_point_contact(poly) for poly in polygons_of(geom)):
-        return geom
-    epsilon = max(1e-7, min(float(pixel_size_mm) * 1e-4, 1e-4))
-    try:
-        repaired = geom.buffer(epsilon, quad_segs=1).buffer(-epsilon, quad_segs=1).buffer(0)
-        if not getattr(repaired, "is_empty", True) and float(getattr(repaired, "area", 0.0)) > 1e-12:
-            return repaired
-    except Exception:
-        pass
-    return geom
 
 
 def _build_binary_vector_mesh(
@@ -213,13 +22,12 @@ def _build_binary_vector_mesh(
 ) -> MaskReliefResult:
     """Create a certified solid from a sub-pixel binary-mask footprint.
 
-    Raster/vector processing is intentionally completed before any 3D mesh is
-    built.  The resulting Shapely footprint is then extruded through the same
-    planar solid boundary used by Plan Tracer instead of maintaining a private
-    cap/wall triangulator here.
+    Raster/vector processing is completed before any 3D mesh is built. The
+    footprint is then extruded through the same planar-solid boundary used by
+    Plan Tracer, so Image Mask no longer maintains a private 3D triangulator.
     """
 
-    from shapely.geometry import Polygon, MultiPolygon
+    from shapely.geometry import MultiPolygon, Polygon
 
     from laserprog_studio.planar_tools import make_locked_plane
 
@@ -273,6 +81,7 @@ def _build_binary_vector_mesh(
         name=name,
         color=color,
     )
+
     metadata = dict(getattr(mesh, "metadata", {}) or {})
     metadata.update(
         {
@@ -291,11 +100,6 @@ def _build_binary_vector_mesh(
     )
     metadata.pop("boolean_skip_merge", None)
     mesh.metadata = metadata
-    try:
-        if hasattr(mesh, "_lps_skip_boolean_merge"):
-            delattr(mesh, "_lps_skip_boolean_merge")
-    except Exception:
-        pass
 
     stats = MaskReliefStats(
         source_width=int(footprint.source_size[0]),
@@ -313,3 +117,5 @@ def _build_binary_vector_mesh(
     )
     return MaskReliefResult(mesh=mesh, stats=stats)
 
+
+__all__ = ["_build_binary_vector_mesh"]

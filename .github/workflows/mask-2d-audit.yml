@@ -11,6 +11,7 @@ on:
       - 'src/laserprog_studio/controllers/image_mask_import.py'
       - 'tests/test_image_mask_relief_import.py'
       - 'tests/test_mask_relief_boolean_merge_policy.py'
+      - 'tests/test_mask_subpixel_contour.py'
       - '.github/workflows/mask-2d-audit.yml'
   workflow_dispatch:
 
@@ -42,7 +43,7 @@ jobs:
           python -m pip install "pytest>=8"
 
       - name: Run mask regression tests
-        run: python -m pytest -q tests/test_image_mask_relief_import.py tests/test_mask_relief_boolean_merge_policy.py
+        run: python -m pytest -q tests/test_image_mask_relief_import.py tests/test_mask_relief_boolean_merge_policy.py tests/test_mask_subpixel_contour.py
 
       - name: Run mask quality probe
         run: python scripts/mask_2d_quality_probe.py > mask-2d-quality.json

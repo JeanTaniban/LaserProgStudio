@@ -406,6 +406,46 @@ def _topology_signature(geometry: Any) -> tuple[int, tuple[int, ...]]:
     return (len(polygons), tuple(sorted(len(poly.interiors) for poly in polygons)))
 
 
+def _topology_correspondence_safe(reference: Any, candidate: Any) -> bool:
+    """Ensure components and holes still occupy the same material/void regions."""
+
+    from shapely.geometry import Polygon
+
+    reference_polys = _iter_polygons(reference)
+    candidate_polys = _iter_polygons(candidate)
+    if not reference_polys or not candidate_polys:
+        return False
+
+    # Every source material component must still contain a deep interior point
+    # of that component, and vice versa for newly produced components.
+    for poly in reference_polys:
+        point = poly.representative_point()
+        if not bool(candidate.covers(point)):
+            return False
+    for poly in candidate_polys:
+        point = poly.representative_point()
+        if not bool(reference.covers(point)):
+            return False
+
+    # A representative point of every source hole must remain void. The reverse
+    # check prevents a newly-created hole elsewhere from compensating the count.
+    for poly in reference_polys:
+        for ring in poly.interiors:
+            hole = Polygon(ring)
+            if hole.is_empty:
+                continue
+            if bool(candidate.covers(hole.representative_point())):
+                return False
+    for poly in candidate_polys:
+        for ring in poly.interiors:
+            hole = Polygon(ring)
+            if hole.is_empty:
+                continue
+            if bool(reference.covers(hole.representative_point())):
+                return False
+    return True
+
+
 def _safe_smooth_footprint(
     geometry: Any,
     *,
@@ -469,6 +509,8 @@ def _safe_smooth_footprint(
         if not bool(getattr(candidate, "is_valid", False)):
             return False
         if _topology_signature(candidate) != signature:
+            return False
+        if not _topology_correspondence_safe(reference, candidate):
             return False
         cand_area = float(getattr(candidate, "area", 0.0))
         if cand_area <= 0.0:
@@ -587,5 +629,6 @@ __all__ = [
     "resolve_mask_physical_size",
     "_ambiguous_case_pairs",
     "_bilinear_sample",
+    "_topology_correspondence_safe",
     "clear_mask_contour_caches",
 ]

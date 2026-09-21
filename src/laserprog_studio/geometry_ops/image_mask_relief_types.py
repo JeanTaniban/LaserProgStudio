@@ -15,6 +15,25 @@ class MaskPhysicalSize:
 
 
 @dataclass(frozen=True, slots=True)
+class MaskSmoothingReport:
+    """Measured result of topology-safe 2D contour smoothing."""
+
+    requested_level: float
+    accepted_level: float
+    source_components: int
+    result_components: int
+    source_holes: int
+    result_holes: int
+    source_area: float
+    result_area: float
+    symmetric_difference_area: float
+    hausdorff_distance: float
+    source_vertices: int
+    result_vertices: int
+    fallback_used: bool
+
+
+@dataclass(frozen=True, slots=True)
 class MaskReliefStats:
     source_width: int
     source_height: int

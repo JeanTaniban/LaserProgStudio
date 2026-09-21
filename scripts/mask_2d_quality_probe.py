@@ -277,6 +277,38 @@ def main() -> int:
             "radial_error": _circle_radial_error(proto,cx=80.0,cy=80.0,radius=60.0),
         }
 
+        # Downsampling contract: verify whether max_grid_size changes the physical
+        # size when pixel_size_mm is kept constant.
+        hi = Image.new("L", (2048, 1024), 255)
+        hd = ImageDraw.Draw(hi)
+        hd.ellipse((256, 128, 1792, 896), fill=0)
+        hi_path = root / "highres_2048.png"
+        hi.save(hi_path)
+        hi_result = build_mask_relief_mesh(
+            hi_path,
+            max_height_mm=10.0,
+            pixel_size_mm=1.0,
+            binary=True,
+            levels=50,
+            smooth=35,
+            max_grid_size=512,
+        )
+        xs=[float(v[0]) for v in hi_result.mesh.vertices]
+        ys=[float(v[1]) for v in hi_result.mesh.vertices]
+        report["downsample_physical_scale"] = {
+            "source_size": [2048,1024],
+            "grid_size": [hi_result.stats.width, hi_result.stats.height],
+            "downsampled": bool(hi_result.stats.downsampled),
+            "mesh_bounds_xy": [
+                min(xs) if xs else None,
+                min(ys) if ys else None,
+                max(xs) if xs else None,
+                max(ys) if ys else None,
+            ],
+            "expected_full_image_width_if_1mm_per_source_pixel": 2048.0,
+            "effective_full_grid_width_mm": float(hi_result.stats.width)*float(hi_result.stats.pixel_size_mm),
+        }
+
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 

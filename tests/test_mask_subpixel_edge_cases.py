@@ -238,3 +238,23 @@ def test_mask_3mf_roundtrip_needs_no_runtime_merge_flag(tmp_path: Path) -> None:
         max(v[2] for v in restored.vertices),
     )
     assert max(abs(a - b) for a, b in zip(src_bounds, dst_bounds)) <= 1.0e-5
+
+
+def test_mask_undo_redo_preserves_direct_manifold_geometry(tmp_path: Path) -> None:
+    mesh = _make_roundtrip_mask(tmp_path)
+    store = ModelStore()
+    store.set_meshes([mesh])
+    _assert_direct_manifold(store.committed_meshes[0])
+
+    store.set_meshes([], push_undo=True)
+    assert store.committed_meshes == []
+
+    assert store.undo() is True
+    assert len(store.committed_meshes) == 1
+    restored = store.committed_meshes[0]
+    assert getattr(restored, "_lps_skip_boolean_merge", False) is False
+    assert bool((restored.metadata or {}).get("boolean_skip_merge", False)) is False
+    _assert_direct_manifold(restored)
+
+    assert store.redo() is True
+    assert store.committed_meshes == []

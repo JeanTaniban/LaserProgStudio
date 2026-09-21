@@ -1282,297 +1282,32 @@ Le grayscale ne persiste pas `boolean_skip_merge` dans metadata alors que le bin
 Décision cible : ne pas institutionnaliser ces marqueurs spécifiques par outil. Le nouveau préparateur commun doit d’abord essayer DIRECT, puis ses candidats d’adaptation. Les flags `_lps_skip_boolean_merge` / `boolean_skip_merge` deviennent une dette de migration et doivent pouvoir disparaître lorsque le nouveau pipeline couvre correctement ces cas.
 
 
-#### Masque 2D binaire — refonte du pipeline contour
-
-> CDC spécialisé : `docs/CDC_IMAGE_MASK_2D_PIPELINE.md`
->
-> Le présent document conserve uniquement les décisions d'intégrité géométrique
-> communes. Les détails d'algorithme raster, marching-squares, Smooth, preview,
-> taille physique, cache, threading et corpus sont désormais centralisés dans le
-> CDC spécialisé.
-
-Le pipeline actuel transforme d’abord chaque pixel actif en rectangle, fusionne ces rectangles avec Shapely, puis tente de lisser le polygone en escalier.
-
-Cette architecture explique directement les bords dentés :
-
-```text
-pixels binaires
-→ rectangles axis-aligned
-→ unary_union
-→ contour déjà quantifié sur la grille
-→ simplify/buffer
-→ extrusion 3D privée
-```
-
-Une fois l’information sub-pixel perdue au moment de la binarisation/union de cases, le lissage ne peut que deviner une courbe plus douce à partir d’un contour déjà crénelé.
-
-Le chemin cible est :
-
-```text
-RGBA source
-→ activité continue 0..255
-→ seuil Levels
-→ iso-contour sub-pixel
-→ validation topologique 2D
-→ lissage 2D contrôlé
-→ PlanarRegion commun
-→ extrude_planar_regions_boolean_ready()
-→ GeometryIntegrityService
-→ SOLID certifié
-```
-
-##### Contour sub-pixel
-
-Utiliser un marching-squares déterministe sur le champ d’activité continu, avec interpolation linéaire au niveau du seuil.
-
-Le contour est donc calculé entre les centres de pixels et non sur les bords de rectangles entiers.
-
-Bénéfices attendus :
-
-- diagonales réellement diagonales ;
-- cercles/ellipses beaucoup moins crénelés ;
-- exploitation de l’anti-aliasing du PNG/JPG ;
-- seuil `Levels` déplaçant continûment le contour au lieu de seulement ajouter/enlever des blocs ;
-- moins de sommets inutiles avant simplification.
-
-Le marching-squares doit gérer explicitement les cas ambigus 5/10 avec un decider scalaire déterministe afin d’éviter que la topologie dépende de l’ordre de parcours.
-
-##### Le lissage reste strictement 2D
-
-Le slider `Smooth` ne modifie jamais un WorkMesh.
-
-Il construit un `SmoothedPlanarFootprintCandidate` à partir du contour source, puis compare avant/après :
-
-- nombre de composantes ;
-- nombre de trous ;
-- relation d’imbrication ;
-- aire ;
-- périmètre ;
-- Hausdorff distance ;
-- déplacement maximal ;
-- minimum clearance ;
-- validité Shapely ;
-- absence de nouveaux contacts zéro-clearance.
-
-Le candidat est rejeté si le lissage :
-
-- ferme un trou ;
-- fusionne deux îlots ;
-- coupe un isthme ;
-- supprime une branche fine ;
-- crée une self-intersection ;
-- déplace le contour au-delà du budget.
-
-La règle `valid_candidate()` actuelle basée essentiellement sur l’aire globale/symmetric-difference est insuffisante.
-
-##### Smooth adaptatif
-
-Le niveau utilisateur 0..100 ne doit pas correspondre directement à un rayon morphologique fixe.
-
-Il contrôle une enveloppe de qualité :
-
-- `0` : iso-contour brut sub-pixel ;
-- faible : réduction du bruit haute fréquence seulement ;
-- moyen : simplification + arrondi léger ;
-- élevé : courbe visuellement adoucie, mais toujours dans le budget topologique/géométrique.
-
-Si un niveau demandé serait destructif, le système doit revenir au meilleur candidat sûr inférieur au lieu de produire un solide faux.
-
-Le résultat peut donc être moins lissé que demandé, mais jamais topologiquement cassé.
-
-##### Une seule extrusion 2D → 3D
-
-`image_mask_relief_vector.py` ne doit plus maintenir son propre moteur :
-
-- constrained triangulation des caps ;
-- création des walls ;
-- orientation des trous ;
-- déduplication de vertices ;
-- règles Manifold spécifiques.
-
-Le masque convertit uniquement son footprint vers `PlanarRegion`.
-
-L’extrusion est déléguée à :
-
-`geometry_ops.planar_boolean_solid.extrude_planar_regions_boolean_ready()`
-
-déjà utilisé comme frontière robuste par Plan Tracer.
-
-Cela centralise :
-
-- normalisation Shapely ;
-- précision ;
-- contacts zéro-clearance ;
-- Manifold CrossSection ;
-- fallback indexé ;
-- certification du solide.
-
-Le masque 2D devient alors un **producteur de footprint**, pas un second moteur CAD.
-
-##### Preview WYSIWYG
-
-Le preview et le mesh final utilisent exactement le même `PlanarFootprint` calculé.
-
-Il est interdit d’avoir :
-
-```text
-preview rasterisé par une logique
-+
-mesh final vectorisé par une autre
-```
-
-Le preview peut rasteriser le footprint commun pour l’affichage, mais ne recalcule pas le contour.
-
-##### Résolution et dimensions physiques
-
-`max_grid_size` est une limite d’échantillonnage, pas une instruction de redimensionnement physique.
-
-Si une image source `Ws × Hs` est ramenée à une grille `Wg × Hg`, la taille physique doit rester indépendante de cette réduction.
-
-Pour un `source_pixel_size_mm` :
-
-```text
-physical_width  = Ws * source_pixel_size_mm
-physical_height = Hs * source_pixel_size_mm
-grid_step_x     = physical_width / Wg
-grid_step_y     = physical_height / Hg
-```
-
-Le code actuel utilise encore `pixel_size_mm` directement après downsampling, ce qui doit être testé/corrigé.
-
-La résolution de vectorisation peut ensuite être augmentée sans changer la taille de la pièce.
-
-##### Résolution cible
-
-La limite historique de 512 venait notamment du coût du pipeline basé sur des milliers de rectangles Shapely.
-
-Avec marching squares, le coût devient linéaire sur le raster puis proportionnel au contour.
-
-Le plafond doit être rebenchmarké. La cible est de privilégier :
-
-- 1024/2048 pour les masques détaillés si le temps reste acceptable ;
-- résolution adaptative selon taille source et complexité ;
-- aucune perte arbitraire de détail simplement pour protéger l’ancien union-of-boxes.
-
-##### Contrat de sortie
-
-Le masque binaire déclare :
-
-```text
-GeometryRole.SOLID
-GeometryMutation.GENERATE
-GeometryProfile.MANUFACTURING_SOLID
-source = IMAGE_MASK_2D
-```
-
-Le commit n’a lieu que si l’extrusion commune est certifiée.
-
-Les flags `boolean_skip_merge` spécifiques au masque doivent disparaître après migration vers ce chemin commun.
-
-##### Tests obligatoires masque
-
-Corpus minimal :
-
-- cercle anti-aliasé ;
-- ellipse ;
-- rectangle arrondi ;
-- diagonale ;
-- étoile concave ;
-- anneau ;
-- multiples trous ;
-- composantes proches mais séparées ;
-- isthme de 1–2 pixels ;
-- stroke fin ;
-- contact diagonal ;
-- PNG transparent ;
-- JPEG bruité ;
-- image > 512 px ;
-- image > 2048 px.
-
-Pour `Smooth = 0, 15, 35, 50, 75, 100` :
-
-- génération sans exception ;
-- footprint Shapely valide ;
-- même nombre de composantes/trous sauf transformation explicitement autorisée ;
-- aucune self-intersection ;
-- déplacement maximal borné ;
-- sortie 3D fermée ;
-- Manifold direct/certifié ;
-- Boolean simple ;
-- deuxième Boolean chaînée.
-
-Qualité sur cercle/ellipse :
-
-- mesurer fraction de segments strictement horizontaux/verticaux ;
-- erreur radiale RMS/max ;
-- Hausdorff au contour analytique ;
-- nombre de vertices.
-
-Les seuils d’acceptation définitifs sont fixés à partir du corpus réel, pas choisis arbitrairement avant mesure.
-
-
-##### Résultats mesurés — masque 2D
-
-Le probe dédié a été exécuté avec succès sur Linux et Windows.
-
-**Cercle anti-aliasé 160×160, rayon nominal 60 px**
-
-Pipeline actuel :
-
-- `Smooth=0` : fraction de périmètre strictement horizontal/vertical = **100 %** ;
-- erreur radiale RMS ≈ **0,438 px** ;
-- erreur radiale max ≈ **0,959 px** ;
-- périmètre polygonal ≈ **480 px** au lieu d’environ `2πr = 377 px`.
-
-À `Smooth=35`, valeur par défaut de l’UI :
-
-- encore **70,3 %** du périmètre axis-aligned ;
-- erreur RMS ≈ **0,454 px** ;
-- `879` vertices de ring.
-
-Le lissage actuel réduit donc partiellement l’aspect en escalier, mais il part d’un contour déjà quantifié et conserve beaucoup de marches.
-
-Prototype marching-squares sub-pixel sur la même source :
-
-- axis-aligned ≈ **2,64 %** ;
-- erreur radiale RMS ≈ **0,170 px** ;
-- erreur max ≈ **0,375 px** ;
-- périmètre ≈ **378,68 px**, très proche du cercle analytique.
-
-Cela valide expérimentalement la refonte sub-pixel.
-
-**Lissage destructif reproduit**
-
-Fixture `thin` contenant traits fins + anneau/trous :
-
-- `Smooth=0` : 1 composante, **4 trous**, aire `812` ;
-- `Smooth=50` : 1 composante, 4 trous, aire `823,74` ;
-- `Smooth=75` : 1 composante, **3 trous**, aire `1221,5` ;
-- `Smooth=100` : même résultat destructif.
-
-Le lissage supprime donc réellement un trou et augmente l’aire d’environ **50 %**.
-
-Le garde-fou actuel est insuffisant parce qu’il autorise une symmetric-difference très importante et ne compare pas explicitement la signature topologique.
-
-**Sortie 3D actuelle**
-
-Sur tout le corpus cercle/anneau/étoile/traits fins/trous/diagonale :
-
-- mesh indexé fermé ;
-- `geometrically_manifold=True` selon le diagnostic welded actuel ;
-- mais construction Manifold directe : **NotManifold**.
-
-Cela confirme que l’extrudeur privé du masque ne doit plus être la frontière finale. La sortie doit passer par le constructeur planar commun puis être DIRECT_CERTIFIED/canonicalisée avant commit.
-
-**Downsampling et taille physique**
-
-Fixture source `2048×1024`, `pixel_size_mm=1`, `max_grid_size=512` :
-
-- grille de travail : `512×256` ;
-- `downsampled=True` ;
-- largeur logique de grille actuelle : **512 mm** au lieu des **2048 mm** correspondant au contrat 1 mm/source-pixel.
-
-Le downsampling modifie donc aujourd’hui simultanément la résolution **et** l’échelle physique. Ces deux notions doivent être découplées.
+#### Masque 2D binaire
+
+CDC spécialisé : `docs/CDC_IMAGE_MASK_2D_PIPELINE.md`.
+
+Décisions communes au socle :
+
+- le masque est un producteur de footprint 2D, pas un moteur 3D autonome ;
+- le contour est sub-pixel et issu du champ scalaire continu ;
+- les cas marching-squares ambigus utilisent un asymptotic decider bilinéaire ;
+- Smooth reste strictement 2D et doit préserver la signature topologique ;
+- l’extrusion passe par `extrude_planar_regions_boolean_ready()` ;
+- la sortie doit être directement certifiable Manifold ;
+- aucun flag `boolean_skip_merge` spécifique au masque n’est autorisé ;
+- résolution de calcul et taille physique sont des contrats indépendants.
+
+État de preuve :
+
+- ancien contour pixel-box : dents reproduites et quantifiées ;
+- ancien Smooth destructif : suppression d’un trou reproduite ;
+- nouveau contour sub-pixel : amélioration radiale mesurée ;
+- nouveau solide : Manifold direct et Boolean chaînée validés ;
+- seuil automatique Otsu : plateau et frontière inter-bin explicitement contractualisés ;
+- corpus adversarial et contrat de taille physique restent des gates avant merge.
+
+Tous les détails algorithmiques, UX, performances, corpus, work packages et gates
+de merge sont centralisés dans le CDC spécialisé.
 
 ### Import 3MF
 

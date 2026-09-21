@@ -7,7 +7,8 @@ from PIL import Image, ImageDraw
 
 import _path_setup  # noqa: F401
 from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh
-from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint
+from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint, resolve_mask_physical_size
+from laserprog_studio.geometry_ops.image_mask_relief_types import MaskPhysicalSize
 from laserprog_studio.geometry_ops.manifold_contract import construct_manifold, manifold_is_valid
 from laserprog_studio.domain.work_model import ModelStore
 from laserprog_studio.io import load_project, save_project_atomic
@@ -258,3 +259,73 @@ def test_mask_undo_redo_preserves_direct_manifold_geometry(tmp_path: Path) -> No
 
     assert store.redo() is True
     assert store.committed_meshes == []
+
+
+def test_legacy_physical_size_contract_matches_historical_512_cap() -> None:
+    size = resolve_mask_physical_size(
+        (2048, 1024),
+        pixel_size_mm=1.0,
+        legacy_max_side_px=512,
+    )
+    assert size == MaskPhysicalSize(width_mm=512.0, height_mm=256.0)
+
+
+def test_legacy_physical_size_is_independent_from_analysis_resolution(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-size.png"
+    Image.new("L", (1024, 512), 0).save(path)
+
+    bounds = []
+    for analysis_limit in (128, 256, 512):
+        fp = build_binary_mask_footprint(
+            path,
+            pixel_size_mm=1.0,
+            levels=50,
+            smooth=0,
+            max_grid_size=analysis_limit,
+            legacy_size_cap_px=256,
+        )
+        assert fp.physical_width_mm == 256.0
+        assert fp.physical_height_mm == 128.0
+        bounds.append(tuple(round(float(v), 6) for v in fp.geometry.bounds))
+
+    assert bounds[0] == bounds[1] == bounds[2]
+
+
+def test_explicit_physical_size_overrides_legacy_compatibility(tmp_path: Path) -> None:
+    path = tmp_path / "explicit-size.png"
+    Image.new("L", (640, 320), 0).save(path)
+    requested = MaskPhysicalSize(width_mm=123.0, height_mm=61.5)
+
+    fp = build_binary_mask_footprint(
+        path,
+        pixel_size_mm=1.0,
+        levels=50,
+        smooth=0,
+        max_grid_size=160,
+        physical_size=requested,
+        legacy_size_cap_px=512,
+    )
+    assert fp.physical_width_mm == 123.0
+    assert fp.physical_height_mm == 61.5
+    minx, miny, maxx, maxy = fp.geometry.bounds
+    assert abs((maxx - minx) - 123.0) <= 1.0e-9
+    assert abs((maxy - miny) - 61.5) <= 1.0e-9
+
+
+def test_mask_mesh_records_resolved_physical_size(tmp_path: Path) -> None:
+    path = tmp_path / "mesh-size.png"
+    Image.new("L", (1024, 512), 0).save(path)
+
+    mesh = build_mask_relief_mesh(
+        path,
+        max_height_mm=4.0,
+        pixel_size_mm=1.0,
+        binary=True,
+        levels=50,
+        smooth=0,
+        max_grid_size=256,
+        legacy_size_cap_px=512,
+    ).mesh
+
+    assert mesh.metadata["mask_physical_width_mm"] == 512.0
+    assert mesh.metadata["mask_physical_height_mm"] == 256.0

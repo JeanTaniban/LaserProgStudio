@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import tempfile
+import time
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -337,6 +338,40 @@ def main() -> int:
             "expected_full_image_width_if_1mm_per_source_pixel": 2048.0,
             "effective_full_grid_width_mm": float(hi_result.stats.width)*float(hi_result.stats.pixel_size_mm),
         }
+
+        resolution_rows = {}
+        for grid_limit in (256, 512, 1024):
+            started = time.perf_counter()
+            fp = build_binary_mask_footprint(
+                hi_path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=35,
+                max_grid_size=grid_limit,
+            )
+            footprint_ms = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
+            result = build_mask_relief_mesh(
+                hi_path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=35,
+                max_grid_size=grid_limit,
+            )
+            solid_ms = (time.perf_counter() - started) * 1000.0
+            resolution_rows[str(grid_limit)] = {
+                "footprint_ms": footprint_ms,
+                "solid_ms": solid_ms,
+                "grid": [fp.width, fp.height],
+                "ring_vertices": _polygon_metrics(fp.geometry)["ring_vertices"],
+                "mesh_vertices": len(result.mesh.vertices),
+                "mesh_triangles": len(result.mesh.triangles),
+            }
+        report["resolution_performance"] = resolution_rows
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

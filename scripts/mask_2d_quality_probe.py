@@ -373,6 +373,97 @@ def main() -> int:
             }
         report["resolution_performance"] = resolution_rows
 
+        # More representative performance fixture: many holes and islands.
+        complex_img = Image.new("L", (2048, 1024), 255)
+        cd = ImageDraw.Draw(complex_img)
+        cd.rounded_rectangle((96, 96, 1952, 928), radius=120, fill=0)
+        for row in range(6):
+            for col in range(12):
+                cx = 210 + col * 145
+                cy = 205 + row * 125
+                radius = 24 + ((row + col) % 3) * 7
+                cd.ellipse((cx-radius, cy-radius, cx+radius, cy+radius), fill=255)
+        for col in range(14):
+            x = 125 + col * 135
+            cd.rectangle((x, 455, x + 34, 570), fill=255)
+        complex_path = root / "complex_logo.png"
+        complex_img.save(complex_path)
+
+        complex_rows = {}
+        for grid_limit in (512, 1024):
+            started = time.perf_counter()
+            fp = build_binary_mask_footprint(
+                complex_path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=35,
+                max_grid_size=grid_limit,
+            )
+            footprint_ms = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
+            result = build_mask_relief_mesh(
+                complex_path,
+                max_height_mm=10.0,
+                pixel_size_mm=1.0,
+                binary=True,
+                levels=50,
+                smooth=35,
+                max_grid_size=grid_limit,
+            )
+            solid_ms = (time.perf_counter() - started) * 1000.0
+            metrics = _polygon_metrics(fp.geometry)
+            complex_rows[str(grid_limit)] = {
+                "footprint_ms": footprint_ms,
+                "solid_ms": solid_ms,
+                "grid": [fp.width, fp.height],
+                "polygon_count": metrics["polygon_count"],
+                "hole_count": metrics["hole_count"],
+                "ring_vertices": metrics["ring_vertices"],
+                "mesh_vertices": len(result.mesh.vertices),
+                "mesh_triangles": len(result.mesh.triangles),
+                "manifold": _manifold(result.mesh),
+            }
+        report["complex_logo_performance"] = complex_rows
+
+        # JPEG noise fixture. Keep the noise deterministic and moderate so the
+        # probe measures realistic compression artifacts without becoming an
+        # unbounded pathological stress test.
+        rng = np.random.default_rng(20260921)
+        noisy = np.full((512, 1024), 230, dtype=np.int16)
+        yy, xx = np.ogrid[:512, :1024]
+        mask_shape = ((xx - 512.0) / 390.0) ** 2 + ((yy - 256.0) / 175.0) ** 2 <= 1.0
+        noisy[mask_shape] = 145
+        noise = rng.normal(0.0, 5.0, size=noisy.shape)
+        noisy = np.clip(noisy + noise, 0, 255).astype(np.uint8)
+        noisy_path = root / "noisy_mask.jpg"
+        Image.fromarray(noisy, mode="L").save(noisy_path, quality=55)
+
+        noisy_rows = {}
+        for grid_limit in (512, 1024):
+            started = time.perf_counter()
+            fp = build_binary_mask_footprint(
+                noisy_path,
+                pixel_size_mm=1.0,
+                invert=False,
+                binary_threshold=0.5,
+                levels=50,
+                smooth=35,
+                max_grid_size=grid_limit,
+            )
+            elapsed = (time.perf_counter() - started) * 1000.0
+            metrics = _polygon_metrics(fp.geometry)
+            noisy_rows[str(grid_limit)] = {
+                "footprint_ms": elapsed,
+                "grid": [fp.width, fp.height],
+                "polygon_count": metrics["polygon_count"],
+                "hole_count": metrics["hole_count"],
+                "ring_vertices": metrics["ring_vertices"],
+                "minimum_clearance": metrics["minimum_clearance"],
+            }
+        report["noisy_jpeg_performance"] = noisy_rows
+
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 

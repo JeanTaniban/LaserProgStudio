@@ -10,6 +10,7 @@ It deliberately returns Shapely geometry, not a WorkMesh.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import math
 from pathlib import Path
 from typing import Any
@@ -86,22 +87,28 @@ def _iter_polygons(geometry: Any) -> tuple[Any, ...]:
     return ()
 
 
-def _load_activity(
-    path: str | Path,
-    *,
+def _source_cache_signature(path: str | Path) -> tuple[str, int, int]:
+    p = Path(path).expanduser().resolve()
+    if not p.exists():
+        raise FileNotFoundError(f"Image not found: {p}")
+    stat = p.stat()
+    return str(p), int(stat.st_mtime_ns), int(stat.st_size)
+
+
+@lru_cache(maxsize=8)
+def _cached_activity_field(
+    path_text: str,
+    mtime_ns: int,
+    file_size: int,
     invert: bool,
-    binary_threshold: float | None,
-    levels: float | None,
     max_grid_size: int,
-) -> tuple[np.ndarray, tuple[int, int], bool, float]:
-    """Return continuous material activity (0..255) and the selected threshold."""
+) -> tuple[np.ndarray, tuple[int, int], bool, tuple[int, ...]]:
+    """Decode/resize an image once for repeated Levels/Smooth previews."""
 
     from PIL import Image
 
-    p = Path(path).expanduser()
-    if not p.exists():
-        raise FileNotFoundError(f"Image not found: {p}")
-
+    _ = (mtime_ns, file_size)  # cache-key only; path is the data source.
+    p = Path(path_text)
     with Image.open(p) as img:
         rgba = img.convert("RGBA")
         white = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
@@ -122,16 +129,43 @@ def _load_activity(
         gray_array = np.asarray(gray, dtype=np.uint8)
 
     activity = gray_array if bool(invert) else (255 - gray_array)
-    activity = np.asarray(activity, dtype=np.float64)
+    activity = np.asarray(activity, dtype=np.uint8)
+    activity.setflags(write=False)
+    hist = tuple(int(v) for v in np.bincount(activity.ravel(), minlength=256).tolist())
+    return activity, source_size, bool(downsampled), hist
 
-    hist = np.bincount(np.asarray(activity, dtype=np.uint8).ravel(), minlength=256).tolist()
+
+def _load_activity(
+    path: str | Path,
+    *,
+    invert: bool,
+    binary_threshold: float | None,
+    levels: float | None,
+    max_grid_size: int,
+) -> tuple[np.ndarray, tuple[int, int], bool, float]:
+    """Return cached continuous material activity and selected threshold."""
+
+    path_text, mtime_ns, file_size = _source_cache_signature(path)
+    activity, source_size, downsampled, hist = _cached_activity_field(
+        path_text,
+        mtime_ns,
+        file_size,
+        bool(invert),
+        int(max_grid_size),
+    )
     _threshold_level, threshold_norm = _resolve_activity_threshold(
-        hist,
+        list(hist),
         binary_threshold=binary_threshold,
         levels=levels,
     )
     return activity, source_size, bool(downsampled), float(threshold_norm)
 
+
+def clear_mask_contour_caches() -> None:
+    """Clear process-local raster/vector caches (tests and explicit invalidation)."""
+
+    _cached_activity_field.cache_clear()
+    _cached_raw_footprint_wkb.cache_clear()
 
 def _point_key(point: tuple[float, float]) -> tuple[float, float]:
     # Shared cell edges must polygonize to exactly the same endpoint.
@@ -336,6 +370,37 @@ def _subpixel_footprint(
     return geometry
 
 
+@lru_cache(maxsize=16)
+def _cached_raw_footprint_wkb(
+    path_text: str,
+    mtime_ns: int,
+    file_size: int,
+    invert: bool,
+    max_grid_size: int,
+    threshold_byte: float,
+    physical_width_mm: float,
+    physical_height_mm: float,
+) -> bytes:
+    """Cache the expensive threshold contour before user smoothing."""
+
+    from shapely import to_wkb
+
+    activity, _source_size, _downsampled, _hist = _cached_activity_field(
+        path_text,
+        int(mtime_ns),
+        int(file_size),
+        bool(invert),
+        int(max_grid_size),
+    )
+    geometry = _subpixel_footprint(
+        activity,
+        threshold_byte=float(threshold_byte),
+        physical_width_mm=float(physical_width_mm),
+        physical_height_mm=float(physical_height_mm),
+    )
+    return bytes(to_wkb(geometry))
+
+
 def _topology_signature(geometry: Any) -> tuple[int, tuple[int, ...]]:
     polygons = _iter_polygons(geometry)
     return (len(polygons), tuple(sorted(len(poly.interiors) for poly in polygons)))
@@ -480,12 +545,20 @@ def build_binary_mask_footprint(
             "or use a higher-contrast image."
         )
 
-    geometry = _subpixel_footprint(
-        activity,
-        threshold_byte=threshold_byte,
-        physical_width_mm=physical_width,
-        physical_height_mm=physical_height,
+    from shapely import from_wkb
+
+    path_text, mtime_ns, file_size = _source_cache_signature(path)
+    raw_wkb = _cached_raw_footprint_wkb(
+        path_text,
+        mtime_ns,
+        file_size,
+        bool(invert),
+        int(max_grid_size),
+        float(threshold_byte),
+        float(physical_width),
+        float(physical_height),
     )
+    geometry = from_wkb(raw_wkb)
     geometry, smoothing_report = _safe_smooth_footprint(
         geometry,
         sample_step_mm=max(step_x, step_y),
@@ -514,4 +587,5 @@ __all__ = [
     "resolve_mask_physical_size",
     "_ambiguous_case_pairs",
     "_bilinear_sample",
+    "clear_mask_contour_caches",
 ]

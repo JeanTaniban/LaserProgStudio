@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from .image_mask_relief_types import MaskReliefResult, MaskReliefStats
+from .image_mask_relief_types import MaskPhysicalSize, MaskReliefResult, MaskReliefStats
 
 
 def _build_binary_vector_mesh(
@@ -19,6 +19,8 @@ def _build_binary_vector_mesh(
     color: str,
     levels: float | None = None,
     smooth: float = 0.0,
+    physical_size: MaskPhysicalSize | None = None,
+    legacy_size_cap_px: int | None = None,
 ) -> MaskReliefResult:
     """Create a certified solid from a sub-pixel binary-mask footprint.
 
@@ -46,6 +48,8 @@ def _build_binary_vector_mesh(
         levels=levels,
         smooth=float(smooth),
         max_grid_size=int(max_grid_size),
+        physical_size=physical_size,
+        legacy_size_cap_px=legacy_size_cap_px,
     )
     geometry = footprint.geometry
 
@@ -93,6 +97,8 @@ def _build_binary_vector_mesh(
             "mask_grid_height": int(footprint.height),
             "mask_step_x_mm": float(footprint.step_x_mm),
             "mask_step_y_mm": float(footprint.step_y_mm),
+            "mask_physical_width_mm": float(footprint.physical_width_mm),
+            "mask_physical_height_mm": float(footprint.physical_height_mm),
             "mask_smooth": float(smooth),
             "mask_threshold": float(footprint.threshold),
             "mask_extrusion_backend": str(solid_report.backend),

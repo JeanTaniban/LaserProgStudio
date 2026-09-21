@@ -2345,6 +2345,53 @@ Conclusion : l’undo technique n’alourdit pas le fichier final, mais il peut 
 
 Le changement `RECOVERY_SAVE + ProjectPersistenceSnapshot` est donc un besoin mesuré, pas seulement une optimisation théorique.
 
+### 30.13.1 Benchmark de compression
+
+Fixture : `36000` vertices et `72000` triangles.
+
+Stratégie actuelle :
+
+```text
+np.savez_compressed
++
+outer ZIP_DEFLATED level 6
+```
+
+Résultats :
+
+- Linux : ~`243.15 ms`, `1,415,992 bytes` ;
+- Windows : ~`280.44 ms`, `1,415,992 bytes`.
+
+NPZ compressé + outer `ZIP_STORED` :
+
+- Linux : ~`208.12 ms`, `1,425,240 bytes` ;
+- Windows : ~`227.36 ms`, `1,425,240 bytes`.
+
+Gain Windows : environ **19 % de temps** sur ce fixture, pour environ **0,65 % de taille supplémentaire**.
+
+NPZ non compressé + outer ZIP unique :
+
+- Linux : ~`207.59 ms`, `1,425,662 bytes` ;
+- Windows : ~`233.41 ms`, `1,425,662 bytes`.
+
+Les deux stratégies à compression unique sont nettement meilleures que la double compression actuelle.
+
+Décision cible retenue pour le format content-addressed :
+
+```text
+geometry/<hash>.npz
+= NPZ compressé une fois
+= membre externe ZIP_STORED
+```
+
+Raisons :
+
+- performances meilleures que le chemin actuel ;
+- taille pratiquement équivalente ;
+- le blob NPZ est autonome ;
+- un blob inchangé peut être recopié byte-for-byte depuis l’ancienne archive vers la nouvelle sans réencoder les arrays ;
+- le hash porte sur le payload logique/canonique, avec vérification du contenu à l’écriture/lecture.
+
 ### 30.14 Priorités persistence
 
 #### P0-Persistence — corriger le coût caché

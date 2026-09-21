@@ -216,34 +216,41 @@ def _write_shapes(root: Path) -> dict[str, Path]:
 
 
 def _case(path: Path, smooth: float) -> dict[str, object]:
-    mask, _src, _down, _thr = _load_binary_mask(
-        path, invert=False, binary_threshold=0.5, levels=50,
-        smooth=smooth, max_grid_size=0
-    )
-    geom, active = _binary_mask_to_smoothed_geometry(mask, pixel_size_mm=1.0, smooth=smooth)
-    result = build_mask_relief_mesh(
-        path, max_height_mm=10.0, pixel_size_mm=1.0, binary=True,
-        levels=50, smooth=smooth, max_grid_size=0
-    )
-    closed = is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles)
-    topo = analyze_work_mesh_boolean_topology(result.mesh)
-    return {
-        "active_pixels": active,
-        "polygon": _polygon_metrics(geom),
-        "mesh": {
-            "vertices": len(result.mesh.vertices),
-            "triangles": len(result.mesh.triangles),
-            "closed": bool(closed[0]),
-            "boundary_edges": int(closed[1]),
-            "indexed_nonmanifold_edges": int(closed[2]),
-            "geometrically_manifold": bool(topo.geometrically_manifold),
-            "welded_boundary_edges": int(topo.welded_boundary_edges),
-            "welded_nonmanifold_edges": int(topo.welded_nonmanifold_edges),
-            "collapsed_triangles": int(topo.collapsed_triangles),
-            "duplicate_triangles": int(topo.duplicate_triangles),
-            "manifold": _manifold(result.mesh),
+    try:
+        mask, _src, _down, _thr = _load_binary_mask(
+            path, invert=False, binary_threshold=0.5, levels=50,
+            smooth=smooth, max_grid_size=0
+        )
+        geom, active = _binary_mask_to_smoothed_geometry(mask, pixel_size_mm=1.0, smooth=smooth)
+        result = build_mask_relief_mesh(
+            path, max_height_mm=10.0, pixel_size_mm=1.0, binary=True,
+            levels=50, smooth=smooth, max_grid_size=0
+        )
+        closed = is_closed_triangle_mesh(result.mesh.vertices, result.mesh.triangles)
+        topo = analyze_work_mesh_boolean_topology(result.mesh)
+        return {
+            "ok": True,
+            "active_pixels": active,
+            "polygon": _polygon_metrics(geom),
+            "mesh": {
+                "vertices": len(result.mesh.vertices),
+                "triangles": len(result.mesh.triangles),
+                "closed": bool(closed[0]),
+                "boundary_edges": int(closed[1]),
+                "indexed_nonmanifold_edges": int(closed[2]),
+                "geometrically_manifold": bool(topo.geometrically_manifold),
+                "welded_boundary_edges": int(topo.welded_boundary_edges),
+                "welded_nonmanifold_edges": int(topo.welded_nonmanifold_edges),
+                "collapsed_triangles": int(topo.collapsed_triangles),
+                "duplicate_triangles": int(topo.duplicate_triangles),
+                "manifold": _manifold(result.mesh),
+            }
         }
-    }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def main() -> int:
@@ -271,11 +278,14 @@ def main() -> int:
 
         # Prototype comparison: current pixel-box vectorization versus sub-pixel
         # marching-squares contouring on the same antialiased circle source.
-        proto = _marching_squares_geometry(shapes["circle_aa"], threshold=127.5)
-        report["circle_subpixel_prototype"] = {
-            **_polygon_metrics(proto),
-            "radial_error": _circle_radial_error(proto,cx=80.0,cy=80.0,radius=60.0),
-        }
+        try:
+            proto = _marching_squares_geometry(shapes["circle_aa"], threshold=127.5)
+            report["circle_subpixel_prototype"] = {
+                **_polygon_metrics(proto),
+                "radial_error": _circle_radial_error(proto,cx=80.0,cy=80.0,radius=60.0),
+            }
+        except Exception as exc:
+            report["circle_subpixel_prototype"] = {"error": f"{type(exc).__name__}: {exc}"}
 
         # Downsampling contract: verify whether max_grid_size changes the physical
         # size when pixel_size_mm is kept constant.

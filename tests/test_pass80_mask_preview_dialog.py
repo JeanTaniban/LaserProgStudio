@@ -22,3 +22,12 @@ def test_mask_smoothing_is_vector_only_not_gaussian_blur() -> None:
     assert "ImageFilter" not in source
     assert "GaussianBlur" not in source
     assert "Smoothing is applied only after the binary mask has been built" in source
+
+def test_mask_preview_runs_off_qt_thread_and_coalesces_stale_requests() -> None:
+    source = (ROOT / "src" / "laserprog_studio" / "controllers" / "image_mask_import.py").read_text(encoding="utf-8")
+    assert "BackgroundTaskManager(dialog, max_workers=1" in source
+    assert 'preview_tasks.run(' in source
+    assert 'coalesce_pending=True' in source
+    assert 'description="2D mask preview"' in source
+    assert 'render_mask_preview_image(' in source
+

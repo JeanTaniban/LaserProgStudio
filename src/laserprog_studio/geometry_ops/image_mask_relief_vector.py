@@ -100,6 +100,9 @@ def _build_binary_vector_mesh(
             "mask_physical_width_mm": float(footprint.physical_width_mm),
             "mask_physical_height_mm": float(footprint.physical_height_mm),
             "mask_smooth": float(smooth),
+            "mask_smooth_requested": float(footprint.smoothing_report.requested_level),
+            "mask_smooth_accepted": float(footprint.smoothing_report.accepted_level),
+            "mask_smooth_fallback": bool(footprint.smoothing_report.fallback_used),
             "mask_threshold": float(footprint.threshold),
             "mask_extrusion_backend": str(solid_report.backend),
         }

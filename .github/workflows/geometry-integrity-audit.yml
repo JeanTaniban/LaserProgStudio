@@ -67,6 +67,6 @@ jobs:
             mask-2d-quality.json
 
       - name: Run full project quality gate
-        if: github.event_name == 'workflow_dispatch' && matrix.os == 'ubuntu-latest'
+        if: (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/leane/fix-mask-2d-subpixel') && matrix.os == 'ubuntu-latest'
         continue-on-error: true
         run: python scripts/quality_gate.py --with-tests --pytest-args -q

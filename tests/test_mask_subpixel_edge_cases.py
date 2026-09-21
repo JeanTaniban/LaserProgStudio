@@ -9,6 +9,9 @@ import _path_setup  # noqa: F401
 from laserprog_studio.geometry_ops.image_mask_relief import build_mask_relief_mesh
 from laserprog_studio.geometry_ops.image_mask_relief_contour import build_binary_mask_footprint
 from laserprog_studio.geometry_ops.manifold_contract import construct_manifold, manifold_is_valid
+from laserprog_studio.domain.work_model import ModelStore
+from laserprog_studio.io import load_project, save_project_atomic
+from laserprog_studio.project import ProjectStore
 
 
 def _parts(geometry):
@@ -158,3 +161,80 @@ def test_analysis_resolution_does_not_change_physical_frame(tmp_path: Path) -> N
         bounds.append(tuple(round(float(v), 6) for v in fp.geometry.bounds))
 
     assert bounds[0] == bounds[1] == bounds[2]
+
+
+def _make_roundtrip_mask(tmp_path: Path):
+    path = tmp_path / "roundtrip_mask.png"
+    img = Image.new("L", (96, 72), 255)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((8, 8, 88, 64), radius=14, fill=0)
+    draw.ellipse((35, 24, 61, 50), fill=255)
+    img.save(path)
+    return build_mask_relief_mesh(
+        path,
+        max_height_mm=7.0,
+        pixel_size_mm=1.0,
+        binary=True,
+        levels=50,
+        smooth=35,
+        max_grid_size=0,
+    ).mesh
+
+
+def test_mask_project_roundtrip_preserves_geometry_contract(tmp_path: Path) -> None:
+    mesh = _make_roundtrip_mask(tmp_path)
+    assert getattr(mesh, "_lps_skip_boolean_merge", False) is False
+    assert bool((mesh.metadata or {}).get("boolean_skip_merge", False)) is False
+    _assert_direct_manifold(mesh)
+
+    project = ProjectStore.new_empty()
+    project.active_scene.model_store.set_meshes([mesh])
+    project.active_scene.record_modification("Import 2D mask", "import")
+    path = tmp_path / "mask-project.lpsproj"
+    save_project_atomic(project, path)
+
+    loaded = load_project(path)
+    restored = loaded.active_scene.meshes[0]
+    assert restored.vertices == mesh.vertices
+    assert restored.triangles == mesh.triangles
+    assert restored.metadata.get("mask_contour_contract") == "subpixel_marching_squares_v1"
+    assert bool(restored.metadata.get("boolean_skip_merge", False)) is False
+    assert getattr(restored, "_lps_skip_boolean_merge", False) is False
+    _assert_direct_manifold(restored)
+
+
+def test_mask_3mf_roundtrip_needs_no_runtime_merge_flag(tmp_path: Path) -> None:
+    mesh = _make_roundtrip_mask(tmp_path)
+    store = ModelStore()
+    store.set_meshes([mesh])
+    path = tmp_path / "mask.3mf"
+    store.export_3mf(path, use_preview=False)
+
+    restored_store = ModelStore()
+    restored_store.load_3mf(path)
+    assert len(restored_store.committed_meshes) == 1
+    restored = restored_store.committed_meshes[0]
+
+    # 3MF intentionally does not carry LaserProg's private metadata. Geometry
+    # therefore has to remain intrinsically valid.
+    assert getattr(restored, "_lps_skip_boolean_merge", False) is False
+    assert bool((restored.metadata or {}).get("boolean_skip_merge", False)) is False
+    _assert_direct_manifold(restored)
+
+    src_bounds = (
+        min(v[0] for v in mesh.vertices),
+        min(v[1] for v in mesh.vertices),
+        min(v[2] for v in mesh.vertices),
+        max(v[0] for v in mesh.vertices),
+        max(v[1] for v in mesh.vertices),
+        max(v[2] for v in mesh.vertices),
+    )
+    dst_bounds = (
+        min(v[0] for v in restored.vertices),
+        min(v[1] for v in restored.vertices),
+        min(v[2] for v in restored.vertices),
+        max(v[0] for v in restored.vertices),
+        max(v[1] for v in restored.vertices),
+        max(v[2] for v in restored.vertices),
+    )
+    assert max(abs(a - b) for a, b in zip(src_bounds, dst_bounds)) <= 1.0e-5

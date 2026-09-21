@@ -1503,6 +1503,70 @@ Qualité sur cercle/ellipse :
 
 Les seuils d’acceptation définitifs sont fixés à partir du corpus réel, pas choisis arbitrairement avant mesure.
 
+
+##### Résultats mesurés — masque 2D
+
+Le probe dédié a été exécuté avec succès sur Linux et Windows.
+
+**Cercle anti-aliasé 160×160, rayon nominal 60 px**
+
+Pipeline actuel :
+
+- `Smooth=0` : fraction de périmètre strictement horizontal/vertical = **100 %** ;
+- erreur radiale RMS ≈ **0,438 px** ;
+- erreur radiale max ≈ **0,959 px** ;
+- périmètre polygonal ≈ **480 px** au lieu d’environ `2πr = 377 px`.
+
+À `Smooth=35`, valeur par défaut de l’UI :
+
+- encore **70,3 %** du périmètre axis-aligned ;
+- erreur RMS ≈ **0,454 px** ;
+- `879` vertices de ring.
+
+Le lissage actuel réduit donc partiellement l’aspect en escalier, mais il part d’un contour déjà quantifié et conserve beaucoup de marches.
+
+Prototype marching-squares sub-pixel sur la même source :
+
+- axis-aligned ≈ **2,64 %** ;
+- erreur radiale RMS ≈ **0,170 px** ;
+- erreur max ≈ **0,375 px** ;
+- périmètre ≈ **378,68 px**, très proche du cercle analytique.
+
+Cela valide expérimentalement la refonte sub-pixel.
+
+**Lissage destructif reproduit**
+
+Fixture `thin` contenant traits fins + anneau/trous :
+
+- `Smooth=0` : 1 composante, **4 trous**, aire `812` ;
+- `Smooth=50` : 1 composante, 4 trous, aire `823,74` ;
+- `Smooth=75` : 1 composante, **3 trous**, aire `1221,5` ;
+- `Smooth=100` : même résultat destructif.
+
+Le lissage supprime donc réellement un trou et augmente l’aire d’environ **50 %**.
+
+Le garde-fou actuel est insuffisant parce qu’il autorise une symmetric-difference très importante et ne compare pas explicitement la signature topologique.
+
+**Sortie 3D actuelle**
+
+Sur tout le corpus cercle/anneau/étoile/traits fins/trous/diagonale :
+
+- mesh indexé fermé ;
+- `geometrically_manifold=True` selon le diagnostic welded actuel ;
+- mais construction Manifold directe : **NotManifold**.
+
+Cela confirme que l’extrudeur privé du masque ne doit plus être la frontière finale. La sortie doit passer par le constructeur planar commun puis être DIRECT_CERTIFIED/canonicalisée avant commit.
+
+**Downsampling et taille physique**
+
+Fixture source `2048×1024`, `pixel_size_mm=1`, `max_grid_size=512` :
+
+- grille de travail : `512×256` ;
+- `downsampled=True` ;
+- largeur logique de grille actuelle : **512 mm** au lieu des **2048 mm** correspondant au contrat 1 mm/source-pixel.
+
+Le downsampling modifie donc aujourd’hui simultanément la résolution **et** l’échelle physique. Ces deux notions doivent être découplées.
+
 ### Import 3MF
 
 - ne doit pas confondre validité 3MF indexée et résultat d’une soudure par coordonnées ;

@@ -93,6 +93,12 @@ class ImageMaskImportLayer:
             preview_timer.setSingleShot(True)
             preview_tasks = BackgroundTaskManager(dialog, max_workers=1, poll_ms=25)
             dialog.destroyed.connect(lambda *_args: preview_tasks.shutdown())
+            ok_button_ref: dict[str, Any] = {"button": None}
+
+            def _set_ok_enabled(enabled: bool) -> None:
+                button = ok_button_ref.get("button")
+                if button is not None:
+                    button.setEnabled(bool(enabled))
 
             def _pil_to_pixmap(image) -> QPixmap:
                 rgba = image.convert("RGBA")
@@ -111,12 +117,14 @@ class ImageMaskImportLayer:
                     preview_label.setPixmap(QPixmap())
                     preview_label.setText("Select an image to preview the binary mask.")
                     preview_status.setText("Black = final 10 mm material. White = empty.")
+                    _set_ok_enabled(False)
                     return
                 path = Path(raw_path).expanduser()
                 if not path.exists():
                     preview_label.setPixmap(QPixmap())
                     preview_label.setText("Image not found.")
                     preview_status.setText("Choose a valid PNG, JPG, JPEG, or BMP image.")
+                    _set_ok_enabled(False)
                     return
 
                 request_path = Path(path)
@@ -126,6 +134,7 @@ class ImageMaskImportLayer:
                 max_w = max(320, int(preview_label.width()) - 20)
                 max_h = max(180, int(preview_label.height()) - 20)
                 preview_status.setText("Computing preview…")
+                _set_ok_enabled(False)
 
                 def _worker():
                     from laserprog_studio.geometry_ops.image_mask_relief import build_mask_preview
@@ -157,11 +166,13 @@ class ImageMaskImportLayer:
                         f"Levels {request_levels} · {smooth_text} · "
                         f"Invert {'on' if request_invert else 'off'}"
                     )
+                    _set_ok_enabled(True)
 
                 def _error(exc: BaseException) -> None:
                     preview_label.setPixmap(QPixmap())
                     preview_label.setText("Preview unavailable.")
                     preview_status.setText(str(exc))
+                    _set_ok_enabled(False)
 
                 preview_tasks.run(
                     "mask-2d-preview",
@@ -173,6 +184,7 @@ class ImageMaskImportLayer:
                 )
 
             def schedule_preview() -> None:
+                _set_ok_enabled(False)
                 preview_timer.start(120)
 
             preview_timer.timeout.connect(refresh_preview)
@@ -182,6 +194,10 @@ class ImageMaskImportLayer:
             file_edit.textChanged.connect(lambda _text: schedule_preview())
 
             buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            ok_button = buttons.button(QDialogButtonBox.Ok)
+            ok_button_ref["button"] = ok_button
+            if ok_button is not None:
+                ok_button.setEnabled(False)
             layout.addWidget(buttons)
 
             def choose_file() -> None:

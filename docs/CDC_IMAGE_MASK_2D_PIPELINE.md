@@ -472,6 +472,27 @@ Mesure sur source 2048×1024, fixture simple :
 
 Ces chiffres sont des probes CI et non des garanties hardware client.
 
+
+### 11.0.1 Corpus complexe
+
+Fixture `2048×1024` avec une grande région, **66 trous** et de nombreux bords.
+
+Windows :
+
+| grille | footprint froid | solide froid | ring vertices | triangles | trous |
+|---:|---:|---:|---:|---:|---:|
+| 512 | ~422,6 ms | ~535,6 ms | 1204 | 5076 | 66 |
+| 1024 | ~1677,2 ms | ~1842,1 ms | 1964 | 8116 | 66 |
+
+Les deux sorties sont Manifold `NoError`.
+
+Un JPEG bruité modéré reste une seule composante :
+
+- 512 : ~159,7 ms, 92 ring vertices ;
+- 1024 : ~569,9 ms, 458 ring vertices.
+
+Décision : 512 offre le meilleur compromis Standard. 1024 doit rester une option de précision explicite.
+
 ### 11.1 Preview
 
 Cible :
@@ -488,13 +509,20 @@ Budget visé :
 
 ### 11.2 Apply
 
-Cible recommandée :
+Décision actuelle :
 
-- 1024 max pour mode standard haute fidélité ;
-- 512 possible en mode rapide ;
-- 2048 seulement après benchmark sur corpus complexe.
+- **512 = Standard**, valeur par défaut ;
+- **1024 = High precision** futur et explicite ;
+- 2048 non retenu sans besoin métier et benchmark complémentaire.
 
-Le changement 512 → 1024 n’est autorisé qu’après découplage complet de la taille physique.
+Le Standard privilégie :
+
+- WYSIWYG strict avec le preview ;
+- réutilisation du contour brut caché ;
+- latence courte ;
+- topologie identique aux tests validés.
+
+Le mode High precision devra être asynchrone et afficher son coût estimé si la complexité est élevée.
 
 ---
 
@@ -937,16 +965,21 @@ Reste ouvert uniquement le choix UX :
 
 Cette évolution UI n’est pas requise pour corriger la régression actuelle, mais le contrat de données est prêt.
 
-### O2 — résolution Apply
+### O2 — haute précision optionnelle
 
-Les mesures rendent 1024 plausible (<1 s sur fixture simple CI), mais la décision finale dépend :
+La résolution standard est désormais fixée à **512** pour Preview et Apply.
 
-- du corpus complexe ;
-- du coût polygonize/unary_union ;
-- de l’UX async ;
-- de la taille finale des meshes.
+Raisons mesurées :
 
-Tant que O1 n’est pas réglé, ne pas changer la résolution Apply par défaut uniquement pour gagner du détail.
+- le contour sub-pixel à 512 supprime déjà l’effet pixel-box ;
+- Preview et Apply utilisent exactement la même résolution et le même contour brut ;
+- le cache permet à Apply de réutiliser le travail du preview ;
+- sur le fixture complexe à 66 trous, Windows :
+  - 512 : ~0,42 s footprint / ~0,54 s solide à froid ;
+  - 1024 : ~1,68 s footprint / ~1,84 s solide à froid ;
+- les deux résolutions conservent les 66 trous et produisent Manifold `NoError`.
+
+1024 devient donc un futur mode **High precision** explicite, jamais un changement silencieux du défaut.
 
 ### O3 — nettoyage du bruit
 
@@ -1032,7 +1065,7 @@ L’exposition width/height dans l’UI reste une amélioration produit séparé
 
 ### WP-E — Preview / threading
 
-Statut : **partiellement implémenté**
+Statut : **implémenté pour le profil Standard**
 
 Déjà fait :
 
@@ -1040,13 +1073,15 @@ Déjà fait :
 - worker dédié au dialogue ;
 - résultats obsolètes ignorés ;
 - tâches en attente coalescées ;
-- preview 512 calculé hors thread Qt.
+- preview 512 calculé hors thread Qt ;
+- cache LRU de l’activité raster ;
+- cache WKB du contour brut avant Smooth ;
+- invalidation par chemin + mtime_ns + taille fichier + paramètres de calcul.
 
-Reste :
+Reste hors scope du correctif principal :
 
-- cache activité/footprint ;
-- éventuel preview haute précision secondaire ;
-- mesure du stall UI réel sous Windows.
+- preview High precision 1024 ;
+- mesure manuelle du stall UI réel sur la machine client.
 
 ### WP-F — Interopérabilité
 
@@ -1108,9 +1143,10 @@ La branche masque n’est fusionnable que si tous les gates suivants sont vrais.
 ### Gate G4 — UX
 
 - [x] contrat taille physique interne figé et compatible ;
-- [ ] résolution Apply figée ;
+- [x] résolution Standard Apply = 512 figée ;
 - [x] preview et Apply utilisent le même pipeline/contrat de taille ;
 - [x] preview lourd déplacé hors thread Qt ;
+- [x] tâches preview obsolètes coalescées ;
 - [ ] test manuel Windows : absence de lag perceptible.
 
 ### Gate G5 — qualité

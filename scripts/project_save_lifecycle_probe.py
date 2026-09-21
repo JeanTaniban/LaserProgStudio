@@ -263,6 +263,26 @@ def _compression_strategy_probe(root: Path) -> dict[str, object]:
         level=6,
     )
 
+    zstd_result: dict[str, object]
+    try:
+        import zstandard as zstd
+
+        # Zstd is tested on one canonical uncompressed NPZ payload. This is a
+        # persistence-format experiment only; production format is decided by CDC.
+        zstd_rows: dict[str, object] = {}
+        for level in (1, 3, 6):
+            compressor = zstd.ZstdCompressor(level=level)
+            started = time.perf_counter()
+            payload = compressor.compress(raw_payload)
+            elapsed = (time.perf_counter() - started) * 1000.0
+            zstd_rows[str(level)] = {
+                "compress_ms": float(elapsed),
+                "bytes": int(len(payload)),
+            }
+        zstd_result = zstd_rows
+    except Exception as exc:
+        zstd_result = {"error": f"{type(exc).__name__}: {exc}"}
+
     return {
         "payload": {
             "vertices": int(len(vertices)),
@@ -270,6 +290,7 @@ def _compression_strategy_probe(root: Path) -> dict[str, object]:
             "compressed_npz_bytes": int(len(compressed_payload)),
             "raw_npz_bytes": int(len(raw_payload)),
         },
+        "zstandard_raw_npz": zstd_result,
         "current_double_compression": {
             "npz_encode_ms": compressed_encode_ms,
             "outer_write_ms": current_outer_ms,

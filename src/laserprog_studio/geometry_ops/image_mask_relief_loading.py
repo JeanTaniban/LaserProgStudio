@@ -123,6 +123,26 @@ def _otsu_threshold(hist: list[int]) -> int:
     return int(round((float(optimal[0]) + float(optimal[-1])) * 0.5))
 
 
+def _resolve_activity_threshold(
+    hist: list[int],
+    *,
+    binary_threshold: float | None,
+    levels: float | None,
+) -> tuple[float, float]:
+    """Return (threshold_level_0_255, threshold_norm_0_1)."""
+
+    if levels is None:
+        threshold_norm = _clamp_float(float(binary_threshold or 0.5), 0.0, 1.0)
+        return float(threshold_norm) * 255.0, float(threshold_norm)
+
+    level = _clamp_float(float(levels), 0.0, 100.0)
+    automatic = _otsu_threshold(hist)
+    threshold_index = int(round(float(automatic) + (50.0 - level) * 1.9))
+    threshold_index = max(8, min(247, threshold_index))
+    threshold_level = float(threshold_index) + 0.5
+    return threshold_level, float(threshold_level) / 255.0
+
+
 def _load_binary_mask(
     path: str | Path,
     *,
@@ -183,21 +203,11 @@ def _load_binary_mask(
         activity.append(a)
         hist[a] += 1
 
-    if levels is None:
-        threshold_norm = _clamp_float(float(binary_threshold or 0.5), 0.0, 1.0)
-        # Explicit thresholds are continuous normalized values. Integer samples
-        # are therefore classified identically to the historical ceil() rule.
-        threshold_level = float(threshold_norm) * 255.0
-    else:
-        level = _clamp_float(float(levels), 0.0, 100.0)
-        automatic = _otsu_threshold(hist)
-        # Higher Levels should keep more material, lower Levels should be
-        # stricter. Otsu returns the last histogram bin in the background
-        # class, so the continuous iso-level lies halfway to the next bin.
-        threshold_index = int(round(float(automatic) + (50.0 - level) * 1.9))
-        threshold_index = max(8, min(247, threshold_index))
-        threshold_level = float(threshold_index) + 0.5
-        threshold_norm = float(threshold_level) / 255.0
+    threshold_level, threshold_norm = _resolve_activity_threshold(
+        hist,
+        binary_threshold=binary_threshold,
+        levels=levels,
+    )
 
     rows: list[list[bool]] = []
     for row in range(height):

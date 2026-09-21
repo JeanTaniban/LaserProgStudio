@@ -490,7 +490,7 @@ Ces chiffres sont des probes CI et non des garanties hardware client.
 
 Fixture `2048×1024` avec une grande région, **66 trous** et de nombreux bords.
 
-Windows :
+Mesures Windows avant cache exact :
 
 | grille | footprint froid | solide froid | ring vertices | triangles | trous |
 |---:|---:|---:|---:|---:|---:|
@@ -499,10 +499,31 @@ Windows :
 
 Les deux sorties sont Manifold `NoError`.
 
+Après ajout des caches activité + contour brut + footprint lissé, nouvelle mesure Windows :
+
+| grille | footprint froid | Smooth warm différent | Apply warm exact | triangles |
+|---:|---:|---:|---:|---:|
+| 512 | ~836 ms | ~322 ms | **~132 ms** | 5076 |
+| 1024 | ~3106 ms | ~877 ms | ~194 ms | 8116 |
+
+Les valeurs froides varient avec la charge CI et les contrôles supplémentaires, mais le point important est le chemin utilisateur :
+
+```text
+preview calculé
+→ utilisateur valide sans changer les paramètres
+→ Apply réutilise le footprint exact
+```
+
+Sur un cercle simple 512 :
+
+- footprint froid ~257 ms ;
+- Smooth warm ~8 ms ;
+- Apply warm exact ~6 ms.
+
 Un JPEG bruité modéré reste une seule composante :
 
-- 512 : ~159,7 ms, 92 ring vertices ;
-- 1024 : ~569,9 ms, 458 ring vertices.
+- 512 : ~236 ms de footprint froid ;
+- 1024 : ~877 ms.
 
 Décision : 512 offre le meilleur compromis Standard. 1024 doit rester une option de précision explicite.
 

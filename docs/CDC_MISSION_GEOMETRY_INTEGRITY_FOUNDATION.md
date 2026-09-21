@@ -2216,6 +2216,42 @@ Ajouter au corpus :
 9. corruption volontaire d’un blob : erreur de chargement explicite/hash mismatch ;
 10. Linux/Windows : même graphe de références et mêmes invariants de taille logique.
 
+### 30.11.1 Intégrité du commit atomique
+
+Le writer atomique actuel présente une faiblesse de transaction :
+
+```python
+save_project(project, tmp_path, mark_clean=True)
+os.replace(tmp_path, out_path)
+```
+
+Or `save_project(..., mark_clean=True)` modifie immédiatement :
+
+- `project.project_path` vers le fichier temporaire ;
+- `project.dirty=False`.
+
+Si `os.replace()` échoue ensuite, le projet en mémoire peut donc être déclaré propre alors que la sauvegarde finale n’a pas été commitée.
+
+Décision cible :
+
+```text
+serialize/write temp
+→ flush/fsync selon politique
+→ atomic replace
+→ seulement après succès : update project_path + mark_clean
+```
+
+Le serializer bas niveau doit être sans effet de bord sur `ProjectStore`.
+
+`ProjectPersistenceService.save(...)` renvoie un résultat transactionnel ; le contrôleur ne modifie l’état du document qu’après confirmation du commit final.
+
+Test obligatoire : injecter un échec de `os.replace()` et vérifier que :
+
+- `project.dirty` reste `True` ;
+- `project.project_path` reste l’ancien chemin ;
+- l’ancien fichier cible n’est pas considéré remplacé ;
+- aucun fichier temporaire résiduel ne reste.
+
 ### 30.12 Critères d’acceptation persistence
 
 La mission persistence est validée si :
@@ -2230,7 +2266,8 @@ La mission persistence est validée si :
 - le temps d’autosave dépend principalement de l’état courant ;
 - la croissance du fichier est explicable par `ProjectStorageReport` ;
 - save/load conserve exactement l’état courant et les restore points retenus ;
-- toutes les écritures restent atomiques.
+- toutes les écritures restent atomiques ;
+- un échec avant le replace final ne peut jamais marquer le projet clean ni modifier son chemin canonique.
 
 ### 30.13 Résultats mesurés — rétention après suppression
 

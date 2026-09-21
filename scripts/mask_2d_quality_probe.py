@@ -247,8 +247,8 @@ def _case(path: Path, smooth: float) -> dict[str, object]:
                 "geometrically_manifold": bool(topo.geometrically_manifold),
                 "welded_boundary_edges": int(topo.welded_boundary_edges),
                 "welded_nonmanifold_edges": int(topo.welded_nonmanifold_edges),
-                "collapsed_triangles": int(topo.collapsed_triangles),
-                "duplicate_triangles": int(topo.duplicate_triangles),
+                "collapsed_triangles": int(topo.collapsed_triangles_after_weld),
+                "duplicate_triangles": int(topo.duplicate_triangles_after_weld),
                 "manifold": _manifold(result.mesh),
             }
         }

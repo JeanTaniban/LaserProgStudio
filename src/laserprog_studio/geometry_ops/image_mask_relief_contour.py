@@ -280,48 +280,53 @@ def _subpixel_footprint(
         15: (),
     }
 
+    # Detect contour-crossing cells with NumPy first. The previous version
+    # visited every raster cell in Python even though most cells are fully
+    # material or fully empty. np.argwhere preserves row-major traversal, so
+    # the deterministic segment order remains unchanged.
+    above = padded >= threshold
+    case_grid = (
+        above[:-1, :-1].astype(np.uint8) * 8
+        + above[:-1, 1:].astype(np.uint8) * 4
+        + above[1:, 1:].astype(np.uint8) * 2
+        + above[1:, :-1].astype(np.uint8)
+    )
+    crossing_cells = np.argwhere((case_grid != 0) & (case_grid != 15))
+
     lines: list[Any] = []
-    for r in range(rows + 1):
-        for c in range(cols + 1):
-            vals = (
-                float(padded[r, c]),
-                float(padded[r, c + 1]),
-                float(padded[r + 1, c + 1]),
-                float(padded[r + 1, c]),
-            )
-            bits = tuple(value >= threshold for value in vals)
-            case = (
-                (8 if bits[0] else 0)
-                | (4 if bits[1] else 0)
-                | (2 if bits[2] else 0)
-                | (1 if bits[3] else 0)
-            )
-            if case in (0, 15):
+    for rr, cc in crossing_cells:
+        r = int(rr)
+        c = int(cc)
+        case = int(case_grid[r, c])
+        vals = (
+            float(padded[r, c]),
+            float(padded[r, c + 1]),
+            float(padded[r + 1, c + 1]),
+            float(padded[r + 1, c]),
+        )
+        pts = (
+            sample_point(r, c),
+            sample_point(r, c + 1),
+            sample_point(r + 1, c + 1),
+            sample_point(r + 1, c),
+        )
+        edges = {
+            0: interpolate(pts[0], pts[1], vals[0], vals[1]),
+            1: interpolate(pts[1], pts[2], vals[1], vals[2]),
+            2: interpolate(pts[3], pts[2], vals[3], vals[2]),
+            3: interpolate(pts[0], pts[3], vals[0], vals[3]),
+        }
+
+        if case in (5, 10):
+            pairs = _ambiguous_case_pairs(case, vals, threshold)
+        else:
+            pairs = standard_cases.get(case, ())
+
+        for first, second in pairs:
+            a, b = edges[first], edges[second]
+            if math.hypot(b[0] - a[0], b[1] - a[1]) <= 1.0e-10:
                 continue
-
-            pts = (
-                sample_point(r, c),
-                sample_point(r, c + 1),
-                sample_point(r + 1, c + 1),
-                sample_point(r + 1, c),
-            )
-            edges = {
-                0: interpolate(pts[0], pts[1], vals[0], vals[1]),
-                1: interpolate(pts[1], pts[2], vals[1], vals[2]),
-                2: interpolate(pts[3], pts[2], vals[3], vals[2]),
-                3: interpolate(pts[0], pts[3], vals[0], vals[3]),
-            }
-
-            if case in (5, 10):
-                pairs = _ambiguous_case_pairs(case, vals, threshold)
-            else:
-                pairs = standard_cases.get(case, ())
-
-            for first, second in pairs:
-                a, b = edges[first], edges[second]
-                if math.hypot(b[0] - a[0], b[1] - a[1]) <= 1.0e-10:
-                    continue
-                lines.append(LineString((a, b)))
+            lines.append(LineString((a, b)))
 
     if not lines:
         raise ValueError("The binary mask contains no closed material contour.")

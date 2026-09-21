@@ -13,7 +13,7 @@ from laserprog_studio.geometry_ops.boolean_topology_contract import analyze_work
 from laserprog_studio.boolean_ops import _prepared_boolean_arrays, is_closed_triangle_mesh
 
 
-def test_mask_relief_marks_boolean_merge_skip_for_diagonal_point_contacts(tmp_path: Path) -> None:
+def test_mask_relief_diagonal_components_need_no_private_merge_policy(tmp_path: Path) -> None:
     mask = tmp_path / "diagonal.png"
     img = Image.new("L", (2, 2), 255)
     img.putpixel((0, 0), 0)
@@ -21,16 +21,16 @@ def test_mask_relief_marks_boolean_merge_skip_for_diagonal_point_contacts(tmp_pa
     img.save(mask)
 
     mesh = build_mask_relief_mesh(mask, max_height_mm=5.0, pixel_size_mm=2.0, binary=True).mesh
-    assert getattr(mesh, "_lps_skip_boolean_merge", False) is True
+    assert getattr(mesh, "_lps_skip_boolean_merge", False) is False
+    assert bool((mesh.metadata or {}).get("boolean_skip_merge", False)) is False
     assert is_closed_triangle_mesh(mesh.vertices, mesh.triangles)[0] is True
 
     _vertices, _triangles, skip_merge = _prepared_boolean_arrays(mesh, label="mask")
-    assert skip_merge is True
+    assert skip_merge is False
 
     reloaded_mesh = deepcopy(mesh)
-    delattr(reloaded_mesh, "_lps_skip_boolean_merge")
     _vertices, _triangles, skip_merge = _prepared_boolean_arrays(reloaded_mesh, label="reloaded mask")
-    assert skip_merge is True
+    assert skip_merge is False
 
 
 def test_mask_relief_concave_hole_is_a_geometric_manifold(tmp_path: Path) -> None:

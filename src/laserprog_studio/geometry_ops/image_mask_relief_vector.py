@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 from laserprog_studio.domain.work_model import WorkMesh
 

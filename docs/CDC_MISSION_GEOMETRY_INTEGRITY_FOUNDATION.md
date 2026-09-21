@@ -2926,3 +2926,161 @@ Avant même le format v2 :
 - l’UI doit rester interactive pendant toute écriture ;
 - une édition effectuée pendant le save laisse le projet dirty à la fin si elle est plus récente que la révision sauvegardée.
 
+### 30.31 Benchmark conteneur à 96 MiB
+
+Un benchmark de conteneur pur a été exécuté avec :
+
+- `96` blobs ;
+- `1 MiB` chacun ;
+- `96 MiB` logiques ;
+- blobs considérés déjà encodés/compressés ;
+- aucune géométrie recalculée pendant la mesure.
+
+#### ZIP v2 style — full rewrite, blobs ZIP_STORED
+
+Windows :
+
+- écriture initiale : ~`77.94 ms` ;
+- save sans changement : ~`82.36 ms` ;
+- un seul blob changé : ~`82.44 ms`.
+
+Linux :
+
+- initial : ~`55.50 ms` ;
+- sans changement : ~`72.23 ms` ;
+- un blob changé : ~`73.07 ms`.
+
+Le coût est proportionnel à la taille totale du package, mais l’I/O séquentielle de blobs déjà compressés est très rapide.
+
+#### SQLite/WAL — transaction incrémentale
+
+Windows :
+
+- insertion initiale 96 MiB : ~`2915.6 ms` ;
+- save sans changement : ~`0.12 ms` ;
+- un blob de 1 MiB changé : ~`31.3 ms` ;
+- suppression GC d’un blob : ~`7.8 ms`.
+
+Linux :
+
+- initial : ~`502.8 ms` ;
+- sans changement : ~`0.10 ms` ;
+- un blob changé : ~`2.0 ms` ;
+- suppression : ~`1.9 ms`.
+
+Conclusion :
+
+- SQLite est excellent pour les écritures fréquentes et incrémentales ;
+- son premier remplissage lourd peut être plus cher, notamment sous Windows avec durabilité `FULL` ;
+- le ZIP v2 reste très efficace pour une sauvegarde utilisateur portable si les blobs sont **déjà encodés** et ne sont pas recompressés.
+
+### 30.32 Décision de format — architecture hybride
+
+Au vu des benchmarks, la cible retenue est :
+
+#### Fichier utilisateur `.lpsproj` v2
+
+Reste un package portable atomique, afin de conserver :
+
+- un seul fichier facilement copiable ;
+- inspection/récupération simple ;
+- garbage collection complète à chaque full save ;
+- absence de données mortes après réécriture.
+
+Structure cible :
+
+```text
+manifest.json
+project.json
+scenes/...
+history/...
+geometry/<geometry_hash>.lpgz
+```
+
+où `.lpgz` représente un blob géométrique canonique compressé une seule fois en Zstandard, puis stocké dans le ZIP en `ZIP_STORED`.
+
+Le save manuel ne compresse pas les géométries. Il ne fait que :
+
+1. capturer `ProjectRevision N` ;
+2. écrire les manifests ;
+3. recopier les blobs Zstd déjà disponibles ;
+4. effectuer le replace atomique ;
+5. marquer N sauvegardée si aucune révision plus récente n’existe.
+
+Cette architecture garde le full save extrêmement simple et rapide.
+
+#### Autosave / Recovery
+
+Utilise un store interne **SQLite/WAL** séparé du fichier utilisateur.
+
+Raisons :
+
+- pas de full rewrite toutes les quelques minutes ;
+- transaction no-op quasi gratuite ;
+- écriture proportionnelle au delta ;
+- bonne base pour coalescing et crash recovery ;
+- le recovery n’a pas besoin d’être un package portable.
+
+Schéma minimal :
+
+```sql
+project_revision(...)
+scene_state(...)
+geometry_blobs(hash PRIMARY KEY, codec, payload)
+current_refs(...)
+```
+
+Le recovery store ne contient ni UndoHistory, ni RestoreHistory complet.
+
+#### Pourquoi ne pas utiliser SQLite comme format utilisateur immédiatement
+
+Le benchmark Windows montre que le premier remplissage de 96 MiB avec `synchronous=FULL` peut atteindre ~`2.9 s`, alors que le ZIP de blobs préencodés est très rapide.
+
+SQLite reste excellent pour le workload fréquent/incrémental de l’autosave, mais n’apporte pas ici d’avantage décisif au premier Save As portable.
+
+Le format utilisateur pourra être reconsidéré uniquement si les benchmarks sur de très gros projets montrent que la réécriture séquentielle ZIP dépasse régulièrement le budget.
+
+### 30.33 Objectif final de performance
+
+La stratégie retenue pour atteindre 1–2 s n’est pas « compression plus rapide » seule.
+
+Elle combine :
+
+```text
+GeometryMutationGateway
+→ geometry_hash
+→ encode Zstd blob once
+→ BlobCache
+→ lightweight ProjectRevision
+```
+
+Puis :
+
+```text
+AUTOSAVE:
+ProjectRevision delta
+→ SQLite/WAL
+→ quelques ms à quelques dizaines de ms
+```
+
+et :
+
+```text
+MANUAL SAVE:
+ProjectRevision
+→ write manifests
+→ sequential copy of pre-encoded blobs
+→ atomic replace
+```
+
+Cibles Windows :
+
+- autosave courant : idéalement < `250 ms`, plafond release `1 s` p95 ;
+- save manuel courant : < `1 s` p95 ;
+- save manuel lourd : < `2 s` p99 dans l’enveloppe projet supportée ;
+- main-thread stall : < `16 ms` p95 ;
+- 0 recompression de blob inchangé ;
+- 0 deepcopy global du projet ;
+- 0 sérialisation de RestoreHistory dans l’autosave.
+
+Si un full save dépasse 2 s à cause du débit physique d’un projet hors enveloppe, l’UI reste néanmoins totalement interactive et la progression est affichée.

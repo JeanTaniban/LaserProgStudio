@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import numpy as np
+from PIL import Image, ImageDraw
 
 import _path_setup  # noqa: F401
 from laserprog_studio.geometry_ops.image_mask_relief_loading import _otsu_threshold, _resolve_activity_threshold
 from laserprog_studio.geometry_ops.image_mask_relief_contour import (
     _ambiguous_case_pairs,
     _bilinear_sample,
+    _cached_activity_field,
+    _cached_raw_footprint_wkb,
+    build_binary_mask_footprint,
+    clear_mask_contour_caches,
 )
 
 
@@ -82,3 +87,44 @@ def test_shared_threshold_contract_keeps_explicit_threshold_continuous() -> None
     )
     assert abs(threshold_level - 178.5) <= 1.0e-12
     assert abs(threshold_norm - 0.7) <= 1.0e-12
+
+def test_mask_contour_cache_reuses_raw_vectorization_across_smooth_values(tmp_path) -> None:
+    clear_mask_contour_caches()
+    path = tmp_path / "cached.png"
+    img = Image.new("L", (256, 128), 255)
+    ImageDraw.Draw(img).ellipse((20, 12, 236, 116), fill=0)
+    img.save(path)
+
+    build_binary_mask_footprint(path, levels=50, smooth=0, max_grid_size=128)
+    activity_after_first = _cached_activity_field.cache_info()
+    raw_after_first = _cached_raw_footprint_wkb.cache_info()
+
+    build_binary_mask_footprint(path, levels=50, smooth=100, max_grid_size=128)
+    activity_after_second = _cached_activity_field.cache_info()
+    raw_after_second = _cached_raw_footprint_wkb.cache_info()
+
+    assert raw_after_first.misses == 1
+    assert raw_after_second.hits >= raw_after_first.hits + 1
+    assert activity_after_second.hits >= activity_after_first.hits + 1
+
+
+def test_mask_contour_cache_invalidates_when_source_file_changes(tmp_path) -> None:
+    clear_mask_contour_caches()
+    path = tmp_path / "changing.png"
+    Image.new("L", (64, 64), 255).save(path)
+
+    try:
+        build_binary_mask_footprint(path, levels=50, smooth=0, max_grid_size=64)
+    except ValueError:
+        # Empty material is expected; activity cache still has to be populated.
+        pass
+    first = _cached_activity_field.cache_info()
+
+    img = Image.new("L", (65, 64), 255)
+    ImageDraw.Draw(img).rectangle((8, 8, 56, 55), fill=0)
+    img.save(path)
+    build_binary_mask_footprint(path, levels=50, smooth=0, max_grid_size=64)
+    second = _cached_activity_field.cache_info()
+
+    assert second.misses >= first.misses + 1
+

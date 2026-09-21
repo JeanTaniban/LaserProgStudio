@@ -1,0 +1,858 @@
+# CDC — Pipeline Masque 2D
+
+Statut : **en cours de validation**
+Branche de travail : `leane/fix-mask-2d-subpixel`
+
+Ce document est le CDC spécialisé du pipeline :
+
+`Image raster → masque 2D → contour vectoriel → lissage → solide 3D`.
+
+Il complète le CDC global d’intégrité géométrique. Le CDC global reste la source des contrats communs de solidité, Manifold, mutation et persistance.
+
+---
+
+## 1. Objectifs
+
+Le masque 2D doit :
+
+- produire un contour visuellement lisse à partir d’un PNG/JPG/BMP ;
+- exploiter l’anti-aliasing de l’image au lieu de suivre les cases du raster ;
+- préserver trous, îlots, traits fins et séparations ;
+- ne jamais produire silencieusement un solide topologiquement différent du footprint validé ;
+- produire un solide directement certifiable par le moteur Manifold ;
+- conserver une taille physique indépendante de la résolution de calcul ;
+- garder le preview interactif ;
+- permettre une qualité supérieure lors de l’Apply sans changer la taille de la pièce.
+
+---
+
+## 2. Défauts reproduits
+
+### 2.1 Contour en marches d’escalier
+
+Ancien chemin :
+
+```text
+pixels actifs
+→ rectangles axis-aligned
+→ unary_union
+→ contour quantifié sur les bords de pixels
+→ simplify/buffer
+→ mesh 3D
+```
+
+Le défaut est structurel : une fois le contour converti en cases pleines, l’information sub-pixel du bord original est perdue.
+
+Mesure sur un cercle anti-aliasé 160×160, rayon nominal 60 px :
+
+| pipeline | fraction axis-aligned | erreur radiale RMS | périmètre |
+|---|---:|---:|---:|
+| ancien brut | 100 % | ~0,438 px | ~480 px |
+| nouveau brut sub-pixel | ~2,64 % | ~0,171 px | ~378,69 px |
+| cercle analytique | — | 0 | ~376,99 px |
+
+Conclusion : le problème principal n’était pas l’absence de lissage mais la mauvaise primitive de vectorisation.
+
+### 2.2 Lissage destructif
+
+Fixture contenant traits fins + anneau/trous :
+
+- ancien `Smooth=0` : 4 trous, aire 812 ;
+- ancien `Smooth=75/100` : 3 trous, aire ~1221,5 ;
+- le lissage supprimait donc réellement une cavité.
+
+Nouveau pipeline :
+
+- 4 trous conservés jusqu’à `Smooth=100` ;
+- sortie Shapely valide ;
+- sortie 3D fermée ;
+- Manifold direct `NoError`.
+
+### 2.3 Extrudeur privé du masque
+
+L’ancien masque binaire reconstruisait lui-même :
+
+- cap supérieur ;
+- cap inférieur ;
+- walls ;
+- orientation des trous ;
+- déduplication des sommets ;
+- exception `boolean_skip_merge`.
+
+Cette duplication de logique divergeait du chemin Plan Tracer.
+
+Décision : le masque 2D ne fabrique plus directement un mesh 3D. Il fournit un footprint commun au générateur planar.
+
+### 2.4 Résolution et taille physique mélangées
+
+L’ancien `max_grid_size` avait deux effets :
+
+- réduction du nombre d’échantillons ;
+- changement implicite de la taille physique, puisque `pixel_size_mm` était appliqué après downsampling.
+
+Ce couplage est interdit dans l’architecture cible.
+
+---
+
+## 3. Architecture cible
+
+```text
+Image source RGBA
+        │
+        ▼
+Composition fond / alpha
+        │
+        ▼
+Champ d'activité continu 0..255
+        │
+        ▼
+Sélection du seuil
+        │
+        ▼
+Marching squares sub-pixel
+        │
+        ▼
+PlanarFootprint brut
+        │
+        ▼
+Validation topologique 2D
+        │
+        ▼
+Lissage contrôlé
+        │
+        ▼
+PlanarFootprint final
+        │
+        ├──► preview rasterisé
+        │
+        ▼
+PlanarRegion
+        │
+        ▼
+extrude_planar_regions_boolean_ready()
+        │
+        ▼
+WorkMesh DIRECT_CERTIFIED
+        │
+        ▼
+GeometryIntegrityService
+        │
+        ▼
+Commit scène
+```
+
+Règle : le raster ne produit jamais directement des triangles 3D.
+
+---
+
+## 4. Contrats de données
+
+### 4.1 RasterActivityField
+
+Responsable de :
+
+- dimensions source ;
+- dimensions de la grille d’analyse ;
+- champ scalaire matériau 0..255 ;
+- seuil ;
+- orientation image ;
+- alpha composite ;
+- ratio physique.
+
+Il ne contient aucune géométrie 3D.
+
+### 4.2 BinaryMaskFootprint
+
+Doit exposer au minimum :
+
+```python
+BinaryMaskFootprint(
+    geometry,
+    source_size,
+    width,
+    height,
+    active_pixels,
+    downsampled,
+    threshold,
+    step_x_mm,
+    step_y_mm,
+    physical_width_mm,
+    physical_height_mm,
+)
+```
+
+Évolution cible :
+
+- `source_fingerprint` ;
+- `contour_contract_version` ;
+- `topology_signature` ;
+- `quality_level` ;
+- `smoothing_report`.
+
+### 4.3 SmoothingReport
+
+À introduire :
+
+```python
+SmoothingReport(
+    requested_level,
+    accepted_level,
+    source_components,
+    result_components,
+    source_holes,
+    result_holes,
+    source_area,
+    result_area,
+    symmetric_difference_area,
+    hausdorff_distance,
+    source_vertices,
+    result_vertices,
+    fallback_used,
+)
+```
+
+L’UI pourra ainsi indiquer qu’un `Smooth=100` a été volontairement réduit pour préserver la forme.
+
+---
+
+## 5. Chargement image
+
+### 5.1 Alpha
+
+Un fond transparent doit être considéré comme vide par défaut.
+
+Le pipeline actuel compose les RGBA sur blanc avant conversion grayscale. Cette convention est conservée.
+
+### 5.2 Invert
+
+`Invert=False` :
+
+- noir = matériau ;
+- blanc = vide.
+
+`Invert=True` inverse cette relation.
+
+### 5.3 JPG
+
+Le JPEG introduit du bruit et des halos de compression.
+
+Le seuil et le nettoyage doivent rester séparés :
+
+- `Levels` décide matériau/vide ;
+- `Smooth` agit sur la géométrie du contour ;
+- un futur `Cleanup / Minimum feature` devra traiter le bruit et les micro-îlots.
+
+Il est interdit d’utiliser Smooth comme filtre anti-bruit implicite.
+
+---
+
+## 6. Seuil Levels
+
+### 6.1 Mode automatique
+
+`Levels=50` utilise le seuil automatique actuel basé sur Otsu.
+
+### 6.2 Déplacement utilisateur
+
+Le slider déplace le seuil autour du niveau automatique.
+
+Le sens UX est conservé :
+
+- valeur basse = sélection stricte ;
+- valeur haute = conserve davantage de matière faible.
+
+### 6.3 Contrat
+
+Le seuil doit rester une valeur scalaire continue utilisée par :
+
+- extraction du contour ;
+- résolution des cellules ambiguës ;
+- classification des faces polygonisées.
+
+Une étape ne doit jamais retransformer le champ en booléens puis tenter de reconstruire les positions de bord.
+
+---
+
+## 7. Marching squares
+
+### 7.1 Interpolation
+
+Chaque intersection d’iso-contour est interpolée linéairement sur l’arête de cellule.
+
+### 7.2 Cellules 5/10
+
+Les cas selle 5 et 10 utilisent un **asymptotic decider bilinéaire**.
+
+Pour :
+
+```text
+TL  TR
+BL  BR
+```
+
+avec les valeurs centrées autour du seuil :
+
+```text
+Q = TL * BR - TR * BL
+```
+
+Le signe de `Q` décide la connectivité.
+
+La moyenne arithmétique des quatre coins est interdite : elle peut donner une topologie différente de celle du champ bilinéaire réel.
+
+### 7.3 Égalité exacte
+
+En cas de selle exactement au seuil, les deux composantes qui se touchent seulement en un point restent séparées.
+
+Objectif :
+
+- éviter les bow-tie vertices ;
+- éviter la création d’un pont de matière artificiel ;
+- rester compatible avec le contrat Manifold.
+
+### 7.4 Classification des faces
+
+Après polygonisation, matériau/vide doit être déterminé en rééchantillonnant **le même champ bilinéaire continu**.
+
+La classification par pixel le plus proche est interdite.
+
+---
+
+## 8. Normalisation 2D
+
+Après extraction :
+
+1. polygoniser les segments ;
+2. sélectionner les faces matériau ;
+3. unionner les faces matériau ;
+4. intersecter avec le rectangle physique de l’image ;
+5. `make_valid` si nécessaire ;
+6. supprimer les restes non polygonaux ;
+7. vérifier surface > 0.
+
+Aucune reconstruction 3D n’intervient à ce stade.
+
+---
+
+## 9. Lissage
+
+### 9.1 Principe
+
+Smooth simplifie le footprint sub-pixel.
+
+Il ne modifie jamais un WorkMesh.
+
+### 9.2 Invariants obligatoires
+
+Un candidat est refusé si l’un de ces invariants est cassé :
+
+- géométrie Shapely valide ;
+- nombre de composantes identique ;
+- nombre de trous identique ;
+- signature composantes/trous identique ;
+- aire dans le budget ;
+- symmetric difference dans le budget ;
+- Hausdorff distance dans le budget.
+
+### 9.3 Backoff
+
+Le slider indique une agressivité demandée.
+
+L’algorithme essaye :
+
+```text
+100 %
+→ 75 %
+→ 50 %
+→ 25 %
+→ footprint brut
+```
+
+et accepte le premier candidat sûr.
+
+Un résultat moins lissé est préférable à une forme modifiée.
+
+### 9.4 Future protection des features fines
+
+À ajouter au profil `manufacturing` :
+
+- minimum feature width ;
+- minimum hole diameter ;
+- longueur minimale de branche ;
+- contrôle des cols/isthmes.
+
+Ces critères doivent être exprimés en millimètres, pas en pixels.
+
+---
+
+## 10. Taille physique
+
+### 10.1 Règle fondamentale
+
+La **résolution d’analyse** et la **dimension physique** sont deux paramètres indépendants.
+
+Changer :
+
+- preview 512 → 256 ;
+- Apply 512 → 1024 ;
+- backend ;
+- simplification ;
+
+ne doit jamais modifier les bounds physiques de la pièce.
+
+### 10.2 UX cible
+
+Le dialogue doit exposer :
+
+- `Largeur (mm)` ;
+- verrouillage du ratio ;
+- hauteur calculée automatiquement ;
+- éventuellement `Hauteur (mm)` si ratio déverrouillé.
+
+Le pixel count source n’est pas une unité mécanique.
+
+### 10.3 Compatibilité
+
+Avant activation de cette UI, ne pas figer silencieusement un nouveau contrat `1 pixel source = 1 mm` pour les grosses images.
+
+Le comportement historique doit être documenté puis migré explicitement.
+
+Décision de migration recommandée :
+
+- calculer une taille physique initiale compatible avec l’ancienne importation ;
+- stocker cette taille dans le document/import request ;
+- ensuite permettre 512/1024/2048 échantillons sans modifier cette taille.
+
+---
+
+## 11. Résolution
+
+Mesure sur source 2048×1024, fixture simple :
+
+| grille max | Linux footprint | Linux solide | Windows footprint | Windows solide |
+|---:|---:|---:|---:|---:|
+| 256 | ~83 ms | ~86 ms | ~93 ms | ~95 ms |
+| 512 | ~206 ms | ~212 ms | ~227 ms | ~246 ms |
+| 1024 | ~696 ms | ~707 ms | ~751 ms | ~866 ms |
+
+Ces chiffres sont des probes CI et non des garanties hardware client.
+
+### 11.1 Preview
+
+Cible :
+
+- grille rapide : 512 max ;
+- calcul hors UI thread ;
+- debounce ;
+- abandon du résultat si les paramètres ont changé entre-temps.
+
+Budget visé :
+
+- < 250 ms sur fixture simple 2048×1024 ;
+- aucun blocage prolongé de la fenêtre.
+
+### 11.2 Apply
+
+Cible recommandée :
+
+- 1024 max pour mode standard haute fidélité ;
+- 512 possible en mode rapide ;
+- 2048 seulement après benchmark sur corpus complexe.
+
+Le changement 512 → 1024 n’est autorisé qu’après découplage complet de la taille physique.
+
+---
+
+## 12. Preview
+
+Le preview doit représenter le même **contrat géométrique** que l’Apply.
+
+Deux niveaux sont autorisés :
+
+### Preview rapide
+
+- résolution inférieure ;
+- même seuil ;
+- même algorithme ;
+- même taille physique ;
+- affiché immédiatement.
+
+### Preview final
+
+Après debounce/idle :
+
+- résolution de l’Apply ;
+- calcul asynchrone ;
+- remplace le preview rapide.
+
+L’UI peut indiquer :
+
+- `Aperçu rapide` ;
+- puis `Aperçu haute précision`.
+
+Ainsi, l’utilisateur ne valide pas une forme dont les petits trous apparaîtront seulement à l’Apply.
+
+---
+
+## 13. Cache
+
+Le pipeline est naturellement cacheable.
+
+Clé minimale :
+
+```text
+source fingerprint
++ invert
++ levels
++ smooth
++ target physical size
++ analysis resolution
++ contour contract version
+```
+
+Niveaux de cache :
+
+1. image grayscale/activité ;
+2. iso-contour brut ;
+3. footprint lissé ;
+4. solide extrudé.
+
+Le déplacement du slider Smooth ne doit pas recharger et redécoder l’image à chaque fois.
+
+---
+
+## 14. Threading
+
+### Preview
+
+Obligatoirement hors thread UI si le calcul dépasse le budget instantané.
+
+Pattern :
+
+```text
+UI change
+→ generation_id += 1
+→ debounce
+→ worker computes
+→ result returns with generation_id
+→ discard if stale
+→ render latest only
+```
+
+### Apply
+
+L’Apply peut utiliser le framework de tâche longue existant si :
+
+- source complexe ;
+- grille ≥ 1024 ;
+- génération > seuil défini.
+
+Le commit scène reste atomique sur le thread principal.
+
+---
+
+## 15. Conversion footprint → solide
+
+Le masque ne possède aucun extrudeur 3D spécifique.
+
+Conversion :
+
+```text
+Shapely Polygon/MultiPolygon
+→ PlanarRegion[]
+→ extrude_planar_regions_boolean_ready()
+→ WorkMesh
+```
+
+Le générateur commun gère :
+
+- trous ;
+- composants ;
+- précision ;
+- zéro-clearance ;
+- Manifold CrossSection ;
+- fallback indexé ;
+- orientation ;
+- canonicalisation.
+
+---
+
+## 16. Contrat 3D
+
+Sortie du masque :
+
+```text
+GeometryRole.SOLID
+GeometryMutation.GENERATE
+GeometryProfile.MANUFACTURING_SOLID
+source = IMAGE_MASK_2D
+```
+
+Postconditions :
+
+- mesh non vide ;
+- fermé ;
+- aucune arête >2-use ;
+- aucun bow-tie vertex ;
+- aucun triangle collapsed après weld ;
+- aucun triangle dupliqué ;
+- Manifold direct `NoError` ;
+- aucun flag privé `boolean_skip_merge`.
+
+---
+
+## 17. Métadonnées
+
+À conserver :
+
+- source tool ;
+- version du contrat contour ;
+- taille source ;
+- taille grille ;
+- pas X/Y ;
+- taille physique ;
+- Levels ;
+- Smooth demandé ;
+- Smooth réellement accepté ;
+- seuil final ;
+- backend extrusion ;
+- fingerprint source.
+
+Ne pas stocker l’image entière dans le WorkMesh si le projet dispose déjà d’un asset store dédié.
+
+---
+
+## 18. Corpus de tests
+
+### Formes synthétiques
+
+- cercle anti-aliasé ;
+- ellipse ;
+- rectangle arrondi ;
+- diagonale ;
+- étoile ;
+- anneau ;
+- plusieurs trous ;
+- plusieurs îlots ;
+- composants séparés d’une fraction de pixel ;
+- contact diagonal ;
+- isthme 1 px ;
+- isthme 2 px ;
+- trait fin ;
+- trou fin ;
+- forme touchant le bord image.
+
+### Images
+
+- PNG opaque ;
+- PNG transparent ;
+- grayscale ;
+- JPG bruité ;
+- JPG faible contraste ;
+- petite image ;
+- 512 px ;
+- 1024 px ;
+- 2048 px ;
+- très grand ratio panoramique/portrait.
+
+### Paramètres
+
+Pour chaque fixture significatif :
+
+`Smooth = 0, 15, 35, 50, 75, 100`
+
+et plusieurs valeurs Levels autour du seuil critique.
+
+---
+
+## 19. Mesures de qualité
+
+### 2D
+
+- validité ;
+- composants ;
+- trous ;
+- Euler characteristic ;
+- aire ;
+- périmètre ;
+- minimum clearance ;
+- symmetric difference ;
+- Hausdorff ;
+- nombre de sommets ;
+- fraction axis-aligned.
+
+### Formes analytiques
+
+Pour cercle/ellipse :
+
+- erreur radiale RMS ;
+- erreur max ;
+- erreur de périmètre ;
+- erreur d’aire.
+
+### 3D
+
+- closed ;
+- boundary edges ;
+- non-manifold edges ;
+- non-manifold vertices ;
+- collapsed triangles ;
+- duplicate triangles ;
+- Manifold status ;
+- volume.
+
+---
+
+## 20. Tests fonctionnels obligatoires
+
+Chaque solide masque de référence doit supporter :
+
+1. import ;
+2. Save/Reload ;
+3. Boolean Difference ;
+4. deuxième Boolean Difference ;
+5. Undo/Redo ;
+6. duplication ;
+7. export 3MF ;
+8. réimport 3MF.
+
+Le résultat ne doit pas redevenir dépendant d’un attribut runtime privé.
+
+---
+
+## 21. Performance
+
+Le budget dépend de la complexité du contour, pas seulement des pixels.
+
+Mesurer séparément :
+
+- décodage image ;
+- resize ;
+- calcul histogramme/Otsu ;
+- marching squares ;
+- polygonize ;
+- union ;
+- smooth ;
+- extrusion Manifold ;
+- validation.
+
+Ajouter au probe :
+
+- temps total ;
+- nombre segments marching ;
+- nombre faces polygonisées ;
+- nombre polygons ;
+- nombre ring vertices avant/après Smooth.
+
+Un test performance ne doit pas échouer sur une seule durée absolue CI ; il doit surtout détecter les régressions ×2/×3 sur le même runner.
+
+---
+
+## 22. Gestion du bruit
+
+Le pipeline de lissage ne doit pas supprimer les micro-composants pour « nettoyer » un JPEG.
+
+Évolution distincte :
+
+`MaskCleanupPolicy`
+
+avec :
+
+- `minimum_island_area_mm2` ;
+- `minimum_hole_area_mm2` ;
+- éventuellement fermeture de gaps < tolérance explicitement demandée.
+
+Le preview doit montrer ces suppressions.
+
+Par défaut, aucune suppression ambiguë de feature métier.
+
+---
+
+## 23. Erreurs utilisateur
+
+Messages attendus :
+
+- aucune matière détectée ;
+- aucune région fermée ;
+- footprint invalide ;
+- feature sous la résolution disponible ;
+- lissage limité pour préserver la topologie ;
+- solidification impossible ;
+- taille physique invalide.
+
+Les erreurs ne doivent jamais être seulement `Manifold NotManifold`.
+
+Le diagnostic détaillé peut rester dans les logs.
+
+---
+
+## 24. État d’implémentation
+
+### Déjà implémenté sur branche
+
+- marching squares sub-pixel ;
+- interpolation linéaire ;
+- asymptotic decider bilinéaire ;
+- classification bilinéaire des faces ;
+- clamp au rectangle physique ;
+- lissage avec backoff ;
+- conservation de la signature composants/trous ;
+- extrusion via Planar Solid commun ;
+- suppression du vieux vectoriseur pixel-box ;
+- suppression de `boolean_skip_merge` pour le masque ;
+- preview basé sur le footprint ;
+- tests Manifold direct ;
+- tests Boolean chaînés ;
+- probe qualité Linux/Windows ;
+- benchmark 256/512/1024.
+
+### À faire avant merge
+
+1. figer le contrat de taille physique ;
+2. empêcher la résolution de calcul de changer les dimensions ;
+3. décider 512 vs 1024 pour Apply ;
+4. ajouter preview asynchrone si 1024 est retenu ;
+5. enrichir le corpus JPG/faible contraste/features proches ;
+6. Save/Reload + export/réimport 3MF ;
+7. exécuter le quality gate global ;
+8. vérifier UI réelle sous Windows.
+
+### Après merge
+
+- cache ;
+- CleanupPolicy ;
+- width/height UI ;
+- preview haute précision asynchrone ;
+- télémétrie locale de performance si utile.
+
+---
+
+## 25. Critères d’acceptation
+
+Le chantier masque 2D est terminé lorsque :
+
+- aucun contour n’est construit depuis une union de rectangles pixel ;
+- le marching squares utilise l’asymptotic decider ;
+- preview et Apply utilisent le même contrat vectoriel ;
+- Smooth ne change jamais la signature topologique sans action explicite ;
+- le changement de résolution ne redimensionne jamais la pièce ;
+- le solide final est Manifold direct ;
+- aucune exception `boolean_skip_merge` n’est requise ;
+- Boolean chaînée fonctionne ;
+- Save/Reload ne change pas le résultat ;
+- les tests Linux et Windows sont verts ;
+- le corpus réel utilisateur ne reproduit plus les dents ni la casse du lissage.
+
+---
+
+## 26. Non-objectifs
+
+Ce chantier ne doit pas devenir :
+
+- un vectoriseur SVG général ;
+- un éditeur d’image ;
+- un système de retouche bitmap ;
+- une reconstruction photo 3D ;
+- une simplification générale de mesh.
+
+Il doit rester un pipeline fiable de conversion d’un masque raster en footprint manufacturable puis en solide.

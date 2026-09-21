@@ -558,6 +558,32 @@ Le Standard privilégie :
 
 Le mode High precision devra être asynchrone et afficher son coût estimé si la complexité est élevée.
 
+
+### 11.3 Résolution mécanique
+
+La qualité ne doit pas être décrite uniquement par `max_grid_size`.
+
+Pour une largeur physique `W_mm` et une grille `N` :
+
+```text
+sample_step_mm = W_mm / N
+```
+
+Exemples Standard 512 :
+
+- pièce 512 mm → ~1,0 mm / sample ;
+- pièce 256 mm → ~0,5 mm / sample ;
+- pièce 100 mm → ~0,195 mm / sample ;
+- pièce 50 mm → ~0,098 mm / sample.
+
+Le dialogue futur doit pouvoir afficher :
+
+`Résolution effective : ~0,20 mm`
+
+et avertir si une feature détectée est proche ou sous la résolution disponible.
+
+Le mode High precision 1024 est justifié par un besoin **mécanique** de résolution, pas par la taille pixel du fichier source seule.
+
 ---
 
 ## 12. Preview

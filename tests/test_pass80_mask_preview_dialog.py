@@ -32,3 +32,10 @@ def test_mask_preview_runs_off_qt_thread_and_coalesces_stale_requests() -> None:
     assert 'build_mask_preview(' in source
     assert 'topology protected' in source
 
+def test_mask_apply_waits_for_current_preview() -> None:
+    source = (ROOT / "src" / "laserprog_studio" / "controllers" / "image_mask_import.py").read_text(encoding="utf-8")
+    assert 'ok_button.setEnabled(False)' in source
+    assert '_set_ok_enabled(False)' in source
+    assert '_set_ok_enabled(True)' in source
+    assert 'Computing preview…' in source
+
